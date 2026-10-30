@@ -209,3 +209,11 @@ test('IA: la respuesta se valida contra la lista de categorías y se normaliza',
   assert.deepEqual(profile.extraTerms, ['higher education', 'teaching']);
   assert.equal(profile.interpretation, 'Trabajo sobre docencia universitaria.');
 });
+
+test('thematicBand agrupa por afinidad relativa a la mejor revista', async () => {
+  const { thematicBand } = await import('./filterJournals');
+  assert.equal(thematicBand(0.8, 0.8), 0);
+  assert.equal(thematicBand(0.5, 0.8), 1);
+  assert.equal(thematicBand(0.3, 0.8), 2);
+  assert.equal(thematicBand(null, 0.8), 0);
+});

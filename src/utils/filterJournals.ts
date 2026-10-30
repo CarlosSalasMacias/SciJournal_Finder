@@ -46,6 +46,18 @@ export const DEFAULT_FILTER_OPTIONS: FilterOptions = {
   sortBy: 'score'
 };
 
+/**
+ * Grupo temático (0 = más afín) según la relevancia de la revista respecto a la mejor de la búsqueda.
+ * Sin texto del manuscrito (relevancia null) todas quedan en el mismo grupo.
+ */
+export const THEMATIC_BANDS = [0.75, 0.5];
+export function thematicBand(relevance: number | null, bestRelevance: number): number {
+  if (relevance === null || bestRelevance <= 0) return 0;
+  const ratio = relevance / bestRelevance;
+  const i = THEMATIC_BANDS.findIndex(t => ratio >= t);
+  return i === -1 ? THEMATIC_BANDS.length : i;
+}
+
 const isAllDisciplines = (d?: string) => !d || d === 'all' || d === 'Todas las disciplinas';
 
 /**
@@ -171,13 +183,19 @@ export function filterAndRankJournals(
   const byTier = (a: EvaluatedJournal, b: EvaluatedJournal) =>
     useTiers ? getEconomicTier(a, maxBudget) - getEconomicTier(b, maxBudget) : 0;
 
+  // Primero el tema y después el costo: las revistas se agrupan por afinidad respecto a la mejor
+  // de la búsqueda, y dentro de cada grupo se aplica la prioridad económica.
+  const bestRelevance = results.reduce((m, r) => Math.max(m, r.thematicRelevance ?? 0), 0);
+  const band = (r: EvaluatedJournal) => thematicBand(r.thematicRelevance, bestRelevance);
+  const byBand = (a: EvaluatedJournal, b: EvaluatedJournal) => band(a) - band(b);
+
   return results.sort((a, b) => {
     switch (filters.sortBy) {
       case 'cost_asc':
         // Coste desconocido al final
         return (a.effectiveCostUSD ?? Infinity) - (b.effectiveCostUSD ?? Infinity) || b.overallScore - a.overallScore;
       case 'affinity':
-        return byTier(a, b) || b.thematicAffinityScore - a.thematicAffinityScore || b.overallScore - a.overallScore;
+        return b.thematicAffinityScore - a.thematicAffinityScore || byTier(a, b) || b.overallScore - a.overallScore;
       case 'quartile':
         return byTier(a, b) || QUARTILE_RANK(a) - QUARTILE_RANK(b) || (b.journal.sjrScore ?? 0) - (a.journal.sjrScore ?? 0);
       case 'format_free':
@@ -186,7 +204,7 @@ export function filterAndRankJournals(
         return byTier(a, b) || VERIFICATION_RANK(a) - VERIFICATION_RANK(b) || b.overallScore - a.overallScore;
       case 'score':
       default:
-        return byTier(a, b) || b.overallScore - a.overallScore || b.thematicAffinityScore - a.thematicAffinityScore ||
+        return byBand(a, b) || byTier(a, b) || b.overallScore - a.overallScore || b.thematicAffinityScore - a.thematicAffinityScore ||
           (a.effectiveCostUSD ?? Infinity) - (b.effectiveCostUSD ?? Infinity);
     }
   });
