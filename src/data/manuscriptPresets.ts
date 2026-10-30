@@ -1,0 +1,72 @@
+import { ManuscriptQuery } from '../types/journal';
+
+export const MANUSCRIPT_PRESETS: Record<string, ManuscriptQuery> = {
+  salud: {
+    title: 'Evaluación de determinantes sociales en la cobertura vacunal y prevalencia de afecciones respiratorias en población pediátrica',
+    abstract: 'Estudio epidemiológico observacional transversal para identificar factores socioeconómicos asociados a la adherencia vacunal y hospitalizaciones por infecciones respiratorias en centros de atención primaria.',
+    keywords: ['salud publica', 'epidemiologia', 'vacunacion', 'pediatria', 'atencion primaria', 'determinantes sociales'],
+    primaryDiscipline: 'Ciencias de la Vida y Medicina',
+    subDiscipline: 'Salud Pública',
+    articleType: 'Investigación original',
+    language: 'Español',
+    accessPreference: 'all',
+    acceptableQuartiles: ['Q1', 'Q2', 'Q3'],
+    maxBudgetUSD: 500,
+    preferFormatFree: true,
+    excludeOverBudget: false,
+    excludeUnverifiedCosts: false,
+    strictRequirementsOnly: false,
+    authorRegion: 'research4life_b' // Ej. Ecuador (50% de descuento en waivers)
+  },
+  educacion: {
+    title: 'Impacto pedagógico de plataformas interactivas y aprendizaje basado en problemas en el rendimiento universitario',
+    abstract: 'Investigación cuasi-experimental sobre el desarrollo de competencias digitales y razonamiento crítico mediante analítica de aprendizaje en educación superior.',
+    keywords: ['educacion', 'tecnologia educativa', 'docencia', 'aprendizaje basado en problemas', 'e-learning'],
+    primaryDiscipline: 'Ciencias Sociales',
+    subDiscipline: 'Educación',
+    articleType: 'Investigación original',
+    language: 'Español',
+    accessPreference: 'all',
+    acceptableQuartiles: ['Q1', 'Q2'],
+    maxBudgetUSD: 500,
+    preferFormatFree: true,
+    excludeOverBudget: false,
+    excludeUnverifiedCosts: false,
+    strictRequirementsOnly: false,
+    authorRegion: 'none'
+  },
+  ia_software: {
+    title: 'Framework reproducible de aprendizaje profundo para análisis cienciométrico y detección de frentes de investigación emergentes',
+    abstract: 'Diseño e implementación de un paquete de código abierto para procesamiento de lenguaje natural y modelado de tópicos en grandes corpus de literatura científica.',
+    keywords: ['machine learning', 'procesamiento de lenguaje natural', 'software cientifico', 'codigo abierto', 'cienciometria', 'algoritmos'],
+    primaryDiscipline: 'Ingeniería y Tecnología',
+    subDiscipline: 'Inteligencia Artificial',
+    articleType: 'Software paper / Herramienta',
+    language: 'Inglés',
+    accessPreference: 'all',
+    acceptableQuartiles: ['Q1', 'Q2', 'Q3'],
+    maxBudgetUSD: 500,
+    preferFormatFree: true,
+    excludeOverBudget: false,
+    excludeUnverifiedCosts: false,
+    strictRequirementsOnly: false,
+    authorRegion: 'none'
+  },
+  humanidades: {
+    title: 'Transformaciones socioculturales y memoria colectiva en la prensa ilustrada de comienzos del siglo XX',
+    abstract: 'Análisis historiográfico y de corpus textual sobre los discursos políticos y movimientos sociales reflejados en periódicos y revistas culturales entre 1900 y 1930.',
+    keywords: ['historia contemporanea', 'estudios culturales', 'prensa historica', 'humanidades digitales', 'siglo xx'],
+    primaryDiscipline: 'Humanidades y Arte',
+    subDiscipline: 'Historia Contemporánea',
+    articleType: 'Investigación original',
+    language: 'Español',
+    accessPreference: 'all',
+    acceptableQuartiles: ['Q1', 'Q2', 'Q3'],
+    maxBudgetUSD: 500,
+    preferFormatFree: false,
+    excludeOverBudget: false,
+    excludeUnverifiedCosts: false,
+    strictRequirementsOnly: false,
+    authorRegion: 'none'
+  }
+};
