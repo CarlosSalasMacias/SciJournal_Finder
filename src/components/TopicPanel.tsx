@@ -10,6 +10,8 @@ interface TopicPanelProps {
   onChangeTopics: (topics: TopicWeight[]) => void;
   onRestore: () => void;
   aiError?: string | null;
+  /** Si se indica, se ofrece activar la IA cuando los temas no vienen de ella. */
+  onSuggestAi?: () => void;
 }
 
 const SOURCE_LABEL: Record<TopicProfile['source'], string> = {
@@ -19,7 +21,7 @@ const SOURCE_LABEL: Record<TopicProfile['source'], string> = {
 };
 
 /** Temas detectados en el manuscrito: el usuario puede ver por qué salen esas revistas y corregirlos. */
-export const TopicPanel: React.FC<TopicPanelProps> = ({ profile, detected, categories, onChangeTopics, onRestore, aiError }) => {
+export const TopicPanel: React.FC<TopicPanelProps> = ({ profile, detected, categories, onChangeTopics, onRestore, aiError, onSuggestAi }) => {
   const [newTopic, setNewTopic] = useState('');
   const listId = 'topic-category-list';
 
@@ -57,6 +59,16 @@ export const TopicPanel: React.FC<TopicPanelProps> = ({ profile, detected, categ
         <p role="alert" className="flex items-start gap-2 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
           <span>No se pudo usar la IA: {aiError} Se muestran los temas detectados por vocabulario.</span>
+        </p>
+      )}
+
+      {onSuggestAi && !aiError && profile.source === 'lexical' && (
+        <p className="flex flex-wrap items-center gap-1 text-xs text-slate-600 bg-amber-50/60 border border-amber-200 rounded-lg px-3 py-2">
+          <Sparkles className="w-3.5 h-3.5 text-amber-500" aria-hidden="true" />
+          ¿Los temas no corresponden a su manuscrito? La IA entiende el significado del texto.
+          <button type="button" onClick={onSuggestAi} className="font-semibold text-indigo-700 hover:text-indigo-900 underline cursor-pointer">
+            Activarla gratis
+          </button>
         </p>
       )}
 

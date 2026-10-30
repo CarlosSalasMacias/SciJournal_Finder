@@ -301,7 +301,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({
               className="inline-flex items-center text-indigo-700 hover:text-indigo-900 underline cursor-pointer"
               aria-label="Configurar la interpretación con IA"
             >
-              {aiConfigured ? <Settings className="w-3.5 h-3.5" /> : 'Configurar'}
+              {aiConfigured ? <Settings className="w-3.5 h-3.5" /> : 'Activar (gratis)'}
             </button>
           </div>
           )}

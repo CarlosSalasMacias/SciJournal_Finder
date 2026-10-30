@@ -139,3 +139,25 @@ export async function inferTopicsWithAI(
   if (profile.topics.length === 0) throw new Error('Gemini no propuso ninguna categoría válida.');
   return profile;
 }
+
+/**
+ * Comprueba una clave sin gastar cuota de generación: pide la ficha del modelo.
+ * Devuelve null si funciona o un mensaje de error en lenguaje sencillo.
+ */
+export async function testGeminiKey(apiKey: string, model = DEFAULT_GEMINI_MODEL): Promise<string | null> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}`;
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: { 'x-goog-api-key': apiKey.trim() }, signal: AbortSignal.timeout(20000) });
+  } catch {
+    return 'No se pudo conectar con Google. Revise su conexión a internet e inténtelo de nuevo.';
+  }
+  if (res.ok) return null;
+  let detail = '';
+  try { detail = (await res.json())?.error?.message ?? ''; } catch { /* sin cuerpo */ }
+  if (res.status === 400 || res.status === 401) return 'Google no reconoce esta clave. Cópiela de nuevo completa, sin espacios.';
+  if (res.status === 403) return 'La clave existe pero no tiene permiso para usar Gemini. Cree una clave nueva en Google AI Studio.';
+  if (res.status === 404) return `El modelo «${model}» no está disponible para esta clave.`;
+  if (res.status === 429) return 'La clave funciona, pero alcanzó su límite de uso. Espere unos minutos.';
+  return `Google respondió con un error (HTTP ${res.status})${detail ? `: ${detail}` : ''}.`;
+}

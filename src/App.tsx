@@ -43,10 +43,10 @@ const INITIAL_QUERY: ManuscriptQuery = {
 type DataStatus = 'loading' | 'ready' | 'error';
 
 /**
- * Interpretación con IA (Gemini). Desactivada por defecto hasta validarla;
- * se activa al compilar con VITE_ENABLE_AI=true.
+ * Interpretación con IA (Gemini, con la clave de cada usuario). Activada por defecto;
+ * se puede ocultar compilando con VITE_ENABLE_AI=false.
  */
-const AI_FEATURE = import.meta.env.VITE_ENABLE_AI === 'true';
+const AI_FEATURE = import.meta.env.VITE_ENABLE_AI !== 'false';
 
 export default function App() {
   // Base curada (cargada al instante) + base SCImago (se descarga al abrir la app)
@@ -244,6 +244,7 @@ export default function App() {
             onChangeTopics={handleChangeTopics}
             onRestore={handleRestoreTopics}
             aiError={aiError}
+            onSuggestAi={AI_FEATURE && !(aiSettings.enabled && aiSettings.apiKey) ? () => setIsAiSettingsOpen(true) : undefined}
           />
         )}
 
