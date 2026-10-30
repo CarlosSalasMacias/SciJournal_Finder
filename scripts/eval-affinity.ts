@@ -22,6 +22,28 @@ const args = process.argv.slice(2);
 const set = args.includes('--set') ? args[args.indexOf('--set') + 1] : 'dev';
 const useAI = args.includes('--ai');
 const verbose = args.includes('--verbose');
+const inGitHub = Boolean(process.env.GITHUB_ACTIONS);
+/** En GitHub, los avisos se ven en la página del flujo sin abrir el registro. */
+const annotate = (level: 'notice' | 'warning', msg: string) => { if (inGitHub) console.log(`::${level}::${msg}`); };
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+/** Llama a la IA con reintentos: el plan gratuito de Gemini limita las peticiones por minuto. */
+async function aiProfile(query: ManuscriptQuery): Promise<TopicProfile> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await inferTopicsWithAI(query, index.categories, {
+        apiKey: process.env.GEMINI_API_KEY!, model: process.env.GEMINI_MODEL || undefined,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Errores de configuración (clave o modelo): no tiene sentido reintentar.
+      if (attempt >= 4 || /no es válida|permiso|no existe/i.test(msg)) throw err;
+      const wait = /límite/i.test(msg) ? 30000 * attempt : 3000;
+      console.log(`   reintento ${attempt} en ${wait / 1000} s: ${msg}`);
+      await sleep(wait);
+    }
+  }
+}
 
 const dataset = JSON.parse(fs.readFileSync('public/data/scimago-2025.json', 'utf8')) as ScimagoDataset;
 const journals = buildAllJournals(dataset, VERIFIED_JOURNALS_DATA);
@@ -35,15 +57,24 @@ const base: ManuscriptQuery = {
 };
 
 async function run(mode: 'lexical' | 'ai') {
-  let hit = 0, pAff = 0, pApp = 0, n = 0;
+  let hit = 0, pAff = 0, pApp = 0, n = 0, failed = 0;
   for (const q of queries.filter((x: { set: string }) => x.set === set)) {
     const gold = new Set<string>(q.gold.map((g: string) => g.toLowerCase()));
     const query: ManuscriptQuery = { ...base, title: q.title, abstract: q.abstract ?? '' };
     let profile: TopicProfile;
     if (mode === 'ai') {
-      profile = await inferTopicsWithAI(query, index.categories, {
-        apiKey: process.env.GEMINI_API_KEY!, model: process.env.GEMINI_MODEL || undefined,
-      });
+      try {
+        profile = await aiProfile(query);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.log(`${q.id} ERROR IA: ${msg}`);
+        annotate('warning', `${q.id}: ${msg}`);
+        failed++;
+        // Cuenta como fallo (0) para no inflar el resultado.
+        n++;
+        continue;
+      }
+      await sleep(4500); // ~13 peticiones por minuto como máximo
     } else {
       profile = inferTopicsLexical(query, index);
     }
@@ -59,10 +90,14 @@ async function run(mode: 'lexical' | 'ai') {
     const a = byAffinity.filter(r => isRel(journalCategories(r.journal))).length / 20;
     const b = app.filter(r => isRel(journalCategories(r.journal))).length / 20;
     hit += h; pAff += a; pApp += b; n++;
-    console.log(`${q.id} tema@3=${h} P@20af=${a.toFixed(2)} P@20app=${b.toFixed(2)} | ${profile.topics.slice(0, 3).map(t => t.category).join('; ')}`);
+    const line = `${q.id} tema@3=${h} P@20app=${b.toFixed(2)} | ${profile.topics.slice(0, 3).map(t => t.category).join('; ')}`;
+    console.log(line.replace(' P@20app', ` P@20af=${a.toFixed(2)} P@20app`));
+    if (mode === 'ai') annotate('notice', `${line}${profile.interpretation ? ` | ${profile.interpretation}` : ''}`);
     if (verbose) console.log('   ', app.slice(0, 5).map(r => r.journal.title).join(' | '));
   }
-  console.log(`\n[${mode}] ${set} (${n} búsquedas): Tema@3 ${(hit / n * 100).toFixed(0)} %  P@20 afinidad ${(pAff / n * 100).toFixed(0)} %  P@20 app ${(pApp / n * 100).toFixed(0)} %\n`);
+  const summary = `[${mode}] ${set} (${n} búsquedas${failed ? `, ${failed} con error de IA` : ''}): Tema@3 ${(hit / n * 100).toFixed(0)} %  P@20 afinidad ${(pAff / n * 100).toFixed(0)} %  P@20 app ${(pApp / n * 100).toFixed(0)} %`;
+  console.log(`\n${summary}\n`);
+  annotate('notice', summary);
 }
 
 await run('lexical');
