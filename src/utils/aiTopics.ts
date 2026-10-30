@@ -118,7 +118,7 @@ export async function inferTopicsWithAI(
     try { detail = (await res.json())?.error?.message ?? ''; } catch { /* sin cuerpo */ }
     if (res.status === 400 && /api key/i.test(detail)) throw new Error('La clave de Gemini no es válida.');
     if (res.status === 403) throw new Error('La clave de Gemini no tiene permiso para este modelo.');
-    if (res.status === 404) throw new Error(`El modelo «${model}» no existe o no está disponible.`);
+    if (res.status === 404) throw new Error(`El modelo «${model}» no existe o no está disponible.${detail ? ` (${detail.slice(0, 300)})` : ''}`);
     if (res.status === 429) {
       throw new Error(`Se alcanzó el límite de uso de Gemini para «${model}». Espere un minuto o pruebe otro modelo.${detail ? ` (${detail.slice(0, 300)})` : ''}`);
     }
