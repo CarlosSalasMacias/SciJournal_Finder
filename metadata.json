@@ -1,0 +1,8 @@
+{
+  "name": "SciJournal Finder - revistas Q1-Q3 de bajo costo",
+  "description": "Encuentra revistas Q1-Q3 con APC bajo o nulo y formato libre en el envío inicial.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
