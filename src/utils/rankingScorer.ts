@@ -1,6 +1,6 @@
 import { Journal, Quartile, ScoringWeights, EvaluatedJournal, ManuscriptQuery } from '../types/journal';
 import { calculateEffectiveCost } from './costCalculator';
-import { evaluateThematicAffinity } from './affinityMatcher';
+import { evaluateThematicAffinity, AffinityContext } from './affinityMatcher';
 
 export const DEFAULT_WEIGHTS: ScoringWeights = {
   thematicAffinity: 35,
@@ -66,14 +66,15 @@ function getVerificationScore(status: Journal['verificationStatus']): number {
 export function evaluateJournal(
   journal: Journal,
   query: ManuscriptQuery,
-  weights: ScoringWeights = DEFAULT_WEIGHTS
+  weights: ScoringWeights = DEFAULT_WEIGHTS,
+  affinityContext?: AffinityContext
 ): EvaluatedJournal {
   // «Priorizar formato libre» desmarcado = el formato no cuenta en la puntuación.
   if (query.preferFormatFree === false) {
     weights = { ...weights, formatFree: 0 };
   }
   const costRes = calculateEffectiveCost(journal, query);
-  const affinityRes = evaluateThematicAffinity(journal, query);
+  const affinityRes = evaluateThematicAffinity(journal, query, affinityContext);
   const quartileRes = getQuartileScore(journal.quartiles);
   const costScore = getCostScore(costRes.effectiveCostUSD, query.maxBudgetUSD);
   const formatScore = getFormatScore(journal.formatFreeSubmission);
@@ -109,7 +110,8 @@ export function evaluateJournal(
     thematicAffinity: affinityRes.level,
     thematicAffinityScore: affinityRes.score,
     thematicJustification: affinityRes.justification,
-    thematicMatchedTerms: affinityRes.matchedTerms,
+    thematicRelevance: affinityRes.relevance,
+    sharedTopics: affinityRes.sharedTopics,
     overallScore,
     scoreBreakdown: {
       thematic: Math.round(weightedThematic * 10) / 10,

@@ -147,11 +147,12 @@ export const MethodologyModal: React.FC<MethodologyModalProps> = ({ onClose }) =
               5. Cómo se Calcula la Afinidad Temática
             </h3>
             <ul className="list-disc pl-5 space-y-1 text-slate-700">
-              <li>Se comparan las palabras del título, resumen y palabras clave con el título, alcance y categorías de cada revista, por raíz de palabra (education ≈ educational).</li>
-              <li>Un glosario de términos académicos traduce del español al inglés para que un manuscrito en español encaje con las categorías de SCImago, que están en inglés.</li>
-              <li>Suman puntos la disciplina (principal o secundaria), el tipo de artículo aceptado y el idioma de publicación cuando la revista lo informa.</li>
-              <li>Por defecto se ocultan las revistas sin ningún término en común con el manuscrito; puede mostrarlas desde los filtros.</li>
-              <li>Es una comparación de palabras, no un análisis semántico: revise siempre el alcance (Aims &amp; Scope) de la revista antes de enviar.</li>
+              <li><strong>1. Temas del manuscrito.</strong> Se identifican las categorías de SCImago (hay 310) que mejor describen el trabajo. Sin IA, se comparan el título, el resumen y las palabras clave con el vocabulario de los títulos de todas las revistas de cada categoría, dando menos peso a las palabras comunes; un glosario traduce términos del español al inglés.</li>
+              <li><strong>Con IA (opcional).</strong> Gemini lee el manuscrito con la clave del propio usuario, interpreta su significado (nombres propios, metáforas, contexto) y elige las categorías de la misma lista. La IA solo decide los temas: el ranking se calcula en el navegador.</li>
+              <li><strong>2. Revistas.</strong> Cada revista recibe la relevancia de sus categorías (hasta 75 %) más un extra si su título comparte términos con el manuscrito (hasta 35 %). También cuentan el tipo de artículo aceptado y el idioma de publicación cuando la revista lo informa.</li>
+              <li>Los temas se muestran sobre los resultados y se pueden quitar o añadir: el ranking se recalcula al instante.</li>
+              <li>Por defecto se ocultan las revistas con relevancia temática inferior al 30 %; puede mostrarlas desde los filtros.</li>
+              <li>Es una orientación: revise siempre el alcance (Aims &amp; Scope) de la revista antes de enviar.</li>
             </ul>
           </section>
 

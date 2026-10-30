@@ -8,13 +8,18 @@ import { ComparisonModal } from './components/ComparisonModal';
 import { PrioritizationWeightsModal } from './components/PrioritizationWeightsModal';
 import { MethodologyModal } from './components/MethodologyModal';
 import { ComparisonBar } from './components/ComparisonBar';
+import { TopicPanel } from './components/TopicPanel';
+import { AiSettingsModal } from './components/AiSettingsModal';
 
 import { VERIFIED_JOURNALS_DATA } from './data/journalsData';
-import { loadScimagoJournals } from './data/scimagoLoader';
-import { ManuscriptQuery, Journal, ScoringWeights, EvaluatedJournal } from './types/journal';
+import { loadScimagoDataset, buildAllJournals } from './data/scimagoLoader';
+import { ManuscriptQuery, Journal, ScoringWeights, EvaluatedJournal, TopicProfile, TopicWeight } from './types/journal';
 import { filterAndRankJournals, FilterOptions, DEFAULT_FILTER_OPTIONS } from './utils/filterJournals';
 import { DEFAULT_WEIGHTS } from './utils/rankingScorer';
 import { exportToCSV, generateMarkdownReport } from './utils/exportUtils';
+import { getTopicIndex, inferTopicsLexical, hasManuscriptText } from './utils/topicModel';
+import { inferTopicsWithAI } from './utils/aiTopics';
+import { loadAiSettings, saveAiSettings, StoredAiSettings } from './utils/aiSettingsStore';
 import { Copy, Check, FileSpreadsheet, Search, AlertCircle } from 'lucide-react';
 
 const INITIAL_QUERY: ManuscriptQuery = {
@@ -39,19 +44,31 @@ type DataStatus = 'loading' | 'ready' | 'error';
 
 export default function App() {
   // Base curada (cargada al instante) + base SCImago (se descarga al abrir la app)
-  const [scimagoJournals, setScimagoJournals] = useState<Journal[]>([]);
+  const [loadedJournals, setLoadedJournals] = useState<Journal[] | null>(null);
   const [dataStatus, setDataStatus] = useState<DataStatus>('loading');
   useEffect(() => {
     let cancelled = false;
-    loadScimagoJournals(VERIFIED_JOURNALS_DATA)
-      .then(list => { if (!cancelled) { setScimagoJournals(list); setDataStatus('ready'); } })
+    loadScimagoDataset()
+      .then(dataset => {
+        if (cancelled) return;
+        setLoadedJournals(buildAllJournals(dataset, VERIFIED_JOURNALS_DATA));
+        setDataStatus('ready');
+      })
       .catch(err => { console.error(err); if (!cancelled) setDataStatus('error'); });
     return () => { cancelled = true; };
   }, []);
-  const allJournals = useMemo(
-    () => [...VERIFIED_JOURNALS_DATA, ...scimagoJournals],
-    [scimagoJournals]
-  );
+  const allJournals = loadedJournals ?? VERIFIED_JOURNALS_DATA;
+  const scimagoCount = allJournals.length - VERIFIED_JOURNALS_DATA.length;
+  // Vocabulario de cada categoría (se calcula una vez cuando termina la carga).
+  const topicIndex = useMemo(() => getTopicIndex(allJournals), [allJournals]);
+
+  // IA opcional (clave del usuario, guardada solo en su navegador)
+  const [aiSettings, setAiSettings] = useState<StoredAiSettings>(loadAiSettings);
+  const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const updateAiSettings = (next: StoredAiSettings) => { setAiSettings(next); saveAiSettings(next); };
+  // Temas detectados en la última búsqueda (antes de que el usuario los edite)
+  const [detectedProfile, setDetectedProfile] = useState<TopicProfile | null>(null);
 
   const [draftQuery, setDraftQuery] = useState<ManuscriptQuery>(INITIAL_QUERY);
   const [appliedQuery, setAppliedQuery] = useState<ManuscriptQuery>(INITIAL_QUERY);
@@ -72,18 +89,41 @@ export default function App() {
 
   // Detectar cambios no aplicados
   const hasUnappliedChanges = useMemo(() => {
-    return JSON.stringify(draftQuery) !== JSON.stringify(appliedQuery);
+    const { topicProfile: _ignored, ...applied } = appliedQuery;
+    return JSON.stringify(draftQuery) !== JSON.stringify(applied);
   }, [draftQuery, appliedQuery]);
 
-  // Ejecutar búsqueda al pulsar el botón
-  const handleExecuteSearch = () => {
+  // Ejecutar búsqueda: 1) detectar temas (con IA si está activada), 2) aplicar la búsqueda
+  const handleExecuteSearch = async () => {
     setIsSearching(true);
-    // setTimeout permite que se pinte el indicador «Buscando…» antes del cálculo
-    setTimeout(() => {
-      setAppliedQuery({ ...draftQuery });
-      setHasSearched(true);
-      setIsSearching(false);
-    }, 0);
+    setAiError(null);
+    const query: ManuscriptQuery = { ...draftQuery };
+    let profile: TopicProfile | undefined;
+    if (hasManuscriptText(query)) {
+      if (aiSettings.enabled && aiSettings.apiKey) {
+        try {
+          profile = await inferTopicsWithAI(query, topicIndex.categories, { apiKey: aiSettings.apiKey, model: aiSettings.model });
+        } catch (err) {
+          setAiError(err instanceof Error ? err.message : 'Error desconocido.');
+        }
+      }
+      // setTimeout permite que se pinte el indicador «Buscando…» antes del cálculo
+      await new Promise(resolve => setTimeout(resolve, 0));
+      profile ??= inferTopicsLexical(query, topicIndex);
+    }
+    setDetectedProfile(profile ?? null);
+    setAppliedQuery({ ...query, topicProfile: profile });
+    setHasSearched(true);
+    setIsSearching(false);
+  };
+
+  const handleChangeTopics = (topics: TopicWeight[]) => {
+    setAppliedQuery(prev => prev.topicProfile
+      ? { ...prev, topicProfile: { ...prev.topicProfile, source: 'manual', topics } }
+      : prev);
+  };
+  const handleRestoreTopics = () => {
+    if (detectedProfile) setAppliedQuery(prev => ({ ...prev, topicProfile: detectedProfile }));
   };
 
   // Evaluación y filtrado reactivo a partir de la búsqueda aplicada
@@ -116,6 +156,8 @@ export default function App() {
     setDraftQuery(resetQ);
     setAppliedQuery(resetQ);
     setHasSearched(false);
+    setDetectedProfile(null);
+    setAiError(null);
     setFilters(DEFAULT_FILTER_OPTIONS);
   };
 
@@ -181,7 +223,22 @@ export default function App() {
           onResetSearch={handleResetSearch}
           isSearching={isSearching}
           hasUnappliedChanges={hasUnappliedChanges}
+          aiEnabled={aiSettings.enabled && aiSettings.apiKey !== ''}
+          aiConfigured={aiSettings.apiKey !== ''}
+          onToggleAi={enabled => updateAiSettings({ ...aiSettings, enabled })}
+          onOpenAiSettings={() => setIsAiSettingsOpen(true)}
         />
+
+        {hasSearched && appliedQuery.topicProfile && detectedProfile && (
+          <TopicPanel
+            profile={appliedQuery.topicProfile}
+            detected={detectedProfile}
+            categories={topicIndex.categories}
+            onChangeTopics={handleChangeTopics}
+            onRestore={handleRestoreTopics}
+            aiError={aiError}
+          />
+        )}
 
 
         {/* Grid de 2 columnas: Filtros laterales + Tabla Central */}
@@ -305,6 +362,14 @@ export default function App() {
         />
       )}
 
+      {isAiSettingsOpen && (
+        <AiSettingsModal
+          settings={aiSettings}
+          onSave={updateAiSettings}
+          onClose={() => setIsAiSettingsOpen(false)}
+        />
+      )}
+
       {/* Modal Metodología y Verificación */}
       {isMethodologyOpen && (
         <MethodologyModal
@@ -317,7 +382,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-2">
             <span className="font-bold text-slate-800">SciJournal Finder</span>
-            <span>• {VERIFIED_JOURNALS_DATA.length} revistas revisadas a mano + {scimagoJournals.length.toLocaleString('es-ES')} revistas Q1–Q3 de SCImago 2025</span>
+            <span>• {VERIFIED_JOURNALS_DATA.length} revistas revisadas a mano + {scimagoCount.toLocaleString('es-ES')} revistas Q1–Q3 de SCImago 2025</span>
           </div>
           <div className="flex items-center space-x-4">
             <button

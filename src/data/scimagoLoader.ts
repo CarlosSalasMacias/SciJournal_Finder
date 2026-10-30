@@ -153,6 +153,7 @@ export function scimagoRowToJournal(
     hIndex,
     country,
     scimagoAreas: areas,
+    topicCategories: row[8].map(code => dataset.categories[Math.floor(code / 10)]).filter(Boolean),
   };
 }
 
@@ -175,9 +176,34 @@ export function buildScimagoJournals(dataset: ScimagoDataset, curated: Journal[]
   return result;
 }
 
-export async function loadScimagoJournals(curated: Journal[]): Promise<Journal[]> {
+/**
+ * Añade a las fichas revisadas las categorías temáticas de SCImago (por coincidencia de ISSN),
+ * para que el modelo de temas las trate igual que al resto.
+ */
+export function enrichCuratedJournals(dataset: ScimagoDataset, curated: Journal[]): Journal[] {
+  const categoriesByIssn = new Map<string, string[]>();
+  for (const row of dataset.journals) {
+    const cats = row[8].map(code => dataset.categories[Math.floor(code / 10)]).filter(Boolean);
+    for (const issn of row[2] ? row[2].split(',') : []) categoriesByIssn.set(normalizeIssn(issn), cats);
+  }
+  return curated.map(j => {
+    const cats = [j.issn, j.eissn]
+      .filter((x): x is string => Boolean(x))
+      .map(i => categoriesByIssn.get(normalizeIssn(i)))
+      .find(Boolean);
+    if (!cats) return j;
+    const own = j.quartiles.filter(q => q.source.includes('Scopus')).map(q => q.category);
+    return { ...j, topicCategories: [...new Set([...cats, ...own])] };
+  });
+}
+
+/** Lista completa: fichas revisadas (enriquecidas) + fichas automáticas de SCImago. */
+export function buildAllJournals(dataset: ScimagoDataset, curated: Journal[]): Journal[] {
+  return [...enrichCuratedJournals(dataset, curated), ...buildScimagoJournals(dataset, curated)];
+}
+
+export async function loadScimagoDataset(): Promise<ScimagoDataset> {
   const res = await fetch(`${import.meta.env.BASE_URL}data/scimago-2025.json`);
   if (!res.ok) throw new Error(`No se pudo cargar la base SCImago (HTTP ${res.status})`);
-  const dataset = (await res.json()) as ScimagoDataset;
-  return buildScimagoJournals(dataset, curated);
+  return (await res.json()) as ScimagoDataset;
 }

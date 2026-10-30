@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ManuscriptQuery } from '../types/journal';
-import { Search, Tag } from 'lucide-react';
+import { Search, Tag, Sparkles, Settings } from 'lucide-react';
 
 interface SearchPanelProps {
   query: ManuscriptQuery;
@@ -9,6 +9,10 @@ interface SearchPanelProps {
   onResetSearch: () => void;
   isSearching: boolean;
   hasUnappliedChanges: boolean;
+  aiEnabled: boolean;
+  aiConfigured: boolean;
+  onToggleAi: (enabled: boolean) => void;
+  onOpenAiSettings: () => void;
 }
 
 const DISCIPLINES = [
@@ -36,7 +40,11 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({
   onExecuteSearch,
   onResetSearch,
   isSearching,
-  hasUnappliedChanges
+  hasUnappliedChanges,
+  aiEnabled,
+  aiConfigured,
+  onToggleAi,
+  onOpenAiSettings
 }) => {
   const [showAdvancedAbstract, setShowAdvancedAbstract] = useState(false);
   const [keywordInput, setKeywordInput] = useState('');
@@ -267,7 +275,32 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({
           )}
         </div>
 
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="inline-flex items-center gap-1.5 text-xs text-slate-700">
+            <Sparkles className={`w-3.5 h-3.5 ${aiEnabled ? 'text-amber-500' : 'text-slate-400'}`} aria-hidden="true" />
+            {aiConfigured ? (
+              <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={aiEnabled}
+                  onChange={e => onToggleAi(e.target.checked)}
+                  className="rounded border-slate-300"
+                />
+                Interpretar con IA
+              </label>
+            ) : (
+              <span>Interpretar con IA</span>
+            )}
+            <button
+              type="button"
+              onClick={onOpenAiSettings}
+              className="inline-flex items-center text-indigo-700 hover:text-indigo-900 underline cursor-pointer"
+              aria-label="Configurar la interpretación con IA"
+            >
+              {aiConfigured ? <Settings className="w-3.5 h-3.5" /> : 'Configurar'}
+            </button>
+          </div>
+
           <button
             type="button"
             onClick={onResetSearch}

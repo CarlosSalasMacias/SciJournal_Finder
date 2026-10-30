@@ -1,5 +1,9 @@
 import { Journal, ManuscriptQuery, EvaluatedJournal, ScoringWeights, Quartile } from '../types/journal';
 import { evaluateJournal, DEFAULT_WEIGHTS } from './rankingScorer';
+import { prepareAffinityContext } from './affinityMatcher';
+
+/** Relevancia temática mínima (0–1) para mostrar una revista, salvo que se pidan también las no relacionadas. */
+export const MIN_RELEVANCE = 0.3;
 
 export type CostPriorityMode =
   | 'zero_apc_first'    // 1º Sin APC (0 USD), 2º dentro del presupuesto, 3º coste sin verificar (predeterminado)
@@ -18,7 +22,7 @@ export interface FilterOptions {
   selectedIndexDatabases: string[];
   selectedVerificationStatuses: string[];
   strictCriteriaOnly: boolean;
-  /** Incluir revistas sin ningún término en común con el manuscrito. */
+  /** Incluir revistas sin relación temática suficiente con el manuscrito. */
   includeUnrelated: boolean;
   /** Incluir revistas cuyo coste no está verificado (fichas automáticas de SCImago). */
   includeUnknownCost: boolean;
@@ -92,6 +96,8 @@ export function filterAndRankJournals(
     ? filters.selectedDiscipline
     : query.primaryDiscipline;
   const textQuery = filters.searchQuery?.toLowerCase().trim();
+  // Los temas del manuscrito se calculan una vez para toda la lista.
+  const affinityContext = prepareAffinityContext(query, journals);
 
   const results: EvaluatedJournal[] = [];
 
@@ -148,14 +154,14 @@ export function filterAndRankJournals(
     if (filters.strictCriteriaOnly && journal.verificationStatus !== 'verified') continue;
 
     // --- Filtros que dependen de la evaluación ---
-    const item = evaluateJournal(journal, query, weights);
+    const item = evaluateJournal(journal, query, weights, affinityContext);
     const cost = item.effectiveCostUSD;
 
     if (filters.costPriorityMode === 'only_zero_apc' && cost !== 0) continue;
     if (cost === null && !filters.includeUnknownCost) continue;
     if (cost !== null && cost > maxBudget && item.budgetEligibility !== 'under_500_conditioned') continue;
     if (filters.onlyFreeOrUnder500 && item.budgetEligibility !== 'under_500_confirmed') continue;
-    if (!filters.includeUnrelated && item.thematicMatchedTerms === 0) continue;
+    if (!filters.includeUnrelated && item.thematicRelevance !== null && item.thematicRelevance < MIN_RELEVANCE) continue;
     if (filters.strictCriteriaOnly && (item.isCostConditional || item.thematicAffinityScore < 40)) continue;
 
     results.push(item);

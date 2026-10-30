@@ -8,8 +8,9 @@ Recomendador de revistas científicas Q1–Q3 para un manuscrito. Prioriza la **
 1. El investigador escribe el título (y, si quiere, el resumen y las palabras clave), la disciplina,
    el tipo de artículo, el idioma y su presupuesto máximo.
 2. La app evalúa todas las revistas de la base y calcula para cada una:
-   - **Afinidad temática**: disciplina, tipo de artículo, idioma y coincidencia de términos con el
-     alcance y las categorías de la revista (con glosario español→inglés).
+   - **Afinidad temática**: primero detecta los temas del manuscrito (categorías de SCImago) y después
+     puntúa cada revista según comparta esos temas y términos en su título. Los temas se muestran y se
+     pueden corregir. Con IA opcional (Gemini, clave del usuario) se interpreta el significado del texto.
    - **Coste final estimado**: APC − descuentos automáticos + cargos obligatorios. Las exenciones que
      hay que solicitar se muestran aparte y no se restan.
    - **Puntuación global** ponderada (afinidad, cuartil, coste, formato libre y verificación). Los pesos
@@ -38,6 +39,30 @@ npm run data
 
 Esto regenera `public/data/scimago-2025.json`, el archivo que descarga la app. Si cambia de año,
 actualice también el nombre del archivo en `scripts/build-scimago-data.mjs` y `src/data/scimagoLoader.ts`.
+
+## Afinidad temática y evaluación
+
+- `src/utils/topicModel.ts`: describe cada categoría con el vocabulario de los títulos de sus revistas y
+  detecta los temas del manuscrito (TF-IDF + coseno).
+- `src/utils/aiTopics.ts`: interpretación opcional con Gemini. La clave la pone cada usuario en
+  «Interpretar con IA → Configurar» y se guarda solo en su navegador.
+- `eval/queries.json`: 40 búsquedas con sus categorías correctas. Las de `dev` se usan para ajustar; las
+  de `test` quedan reservadas para validar.
+
+```bash
+npm run eval
+```
+
+```bash
+npm run eval -- --set test
+```
+
+```bash
+GEMINI_API_KEY=su-clave npm run eval -- --set test --ai
+```
+
+También puede ejecutarse en GitHub: guarde la clave como secreto `GEMINI_API_KEY` (Settings → Secrets and
+variables → Actions) y lance el flujo **Evaluar afinidad** desde la pestaña Actions.
 
 ## Desarrollo
 
@@ -69,7 +94,9 @@ scripts/build-scimago-data.mjs   CSV de SCImago -> JSON compacto
 src/data/journalsData.ts         Fichas revisadas a mano
 src/data/scimagoLoader.ts        Carga el JSON y lo convierte en fichas
 src/utils/costCalculator.ts      Coste final estimado
-src/utils/affinityMatcher.ts     Afinidad temática
+src/utils/topicModel.ts          Temas del manuscrito y relevancia de cada revista
+src/utils/aiTopics.ts            Interpretación opcional con IA (Gemini)
+src/utils/affinityMatcher.ts     Puntuación de afinidad temática
 src/utils/rankingScorer.ts       Puntuación global ponderada
 src/utils/filterJournals.ts      Filtros y orden
 src/components/                  Interfaz (React + Tailwind)

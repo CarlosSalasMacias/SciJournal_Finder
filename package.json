@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "lint": "tsc --noEmit",
     "test": "tsx --test src/utils/*.test.ts",
-    "data": "node scripts/build-scimago-data.mjs"
+    "data": "node scripts/build-scimago-data.mjs",
+    "eval": "tsx scripts/eval-affinity.ts"
   },
   "dependencies": {
     "lucide-react": "^0.546.0",

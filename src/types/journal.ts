@@ -125,6 +125,26 @@ export interface Journal {
   hIndex?: number;
   country?: string;
   scimagoAreas?: string[];
+  /** Categorías temáticas de SCImago (también para fichas revisadas, por coincidencia de ISSN). */
+  topicCategories?: string[];
+}
+
+/** Categoría temática con su peso relativo (0–1) para un manuscrito. */
+export interface TopicWeight {
+  category: string;
+  weight: number;
+}
+
+/** Temas detectados en el manuscrito. */
+export interface TopicProfile {
+  /** 'lexical': por vocabulario; 'ai': interpretado por IA; 'manual': editado por el usuario. */
+  source: 'lexical' | 'ai' | 'manual';
+  topics: TopicWeight[];
+  /** Términos en inglés sugeridos por la IA para comparar con los títulos de las revistas. */
+  extraTerms: string[];
+  /** Interpretación breve del manuscrito (solo con IA). */
+  interpretation?: string;
+  model?: string;
 }
 
 export interface ManuscriptQuery {
@@ -147,6 +167,9 @@ export interface ManuscriptQuery {
 
   // Perfil del autor para cálculo de exenciones reales
   authorRegion?: 'none' | 'research4life_a' | 'research4life_b' | 'institutional_agreement_spain' | 'society_member';
+
+  /** Temas del manuscrito. Si falta, se detectan automáticamente por vocabulario. */
+  topicProfile?: TopicProfile;
 }
 
 export interface ScoringWeights {
@@ -171,8 +194,10 @@ export interface EvaluatedJournal {
   thematicAffinity: 'high' | 'medium' | 'low';
   thematicAffinityScore: number; // 0 - 100
   thematicJustification: string;
-  /** Términos del manuscrito que coinciden con la revista (null si no se escribió título/resumen/palabras clave). */
-  thematicMatchedTerms: number | null;
+  /** Relevancia temática 0–1 (null si no se escribió título/resumen/palabras clave). */
+  thematicRelevance: number | null;
+  /** Temas del manuscrito que comparte la revista. */
+  sharedTopics: TopicWeight[];
   overallScore: number; // 0 - 100
   scoreBreakdown: {
     thematic: number;

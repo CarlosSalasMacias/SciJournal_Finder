@@ -1,0 +1,36 @@
+name: Evaluar afinidad
+
+# Mide la afinidad temática con el banco eval/queries.json, con y sin IA.
+# Requiere el secreto GEMINI_API_KEY para la parte con IA. Se lanza a mano desde la pestaña Actions.
+on:
+  workflow_dispatch:
+    inputs:
+      set:
+        description: 'Conjunto de búsquedas (dev = ajuste, test = reservado)'
+        default: test
+        type: choice
+        options: [test, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Evaluar
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -n "$GEMINI_API_KEY" ]; then
+            npm run eval -- --set ${{ inputs.set }} --ai
+          else
+            echo "Sin secreto GEMINI_API_KEY: solo se evalúa la detección por vocabulario."
+            npm run eval -- --set ${{ inputs.set }}
+          fi

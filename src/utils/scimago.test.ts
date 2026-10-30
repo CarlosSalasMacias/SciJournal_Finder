@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { ManuscriptQuery, Journal } from '../types/journal';
 import { scimagoRowToJournal, buildScimagoJournals, ScimagoDataset } from '../data/scimagoLoader';
 import { calculateEffectiveCost } from './costCalculator';
-import { evaluateThematicAffinity } from './affinityMatcher';
+import { evaluateThematicAffinity, prepareAffinityContext } from './affinityMatcher';
+import { getTopicIndex, inferTopicsLexical } from './topicModel';
+import { parseAiAnswer } from './aiTopics';
+import { stemWord } from './textStems';
 import { evaluateJournal } from './rankingScorer';
 import { filterAndRankJournals, DEFAULT_FILTER_OPTIONS, getEconomicTier } from './filterJournals';
 import { bestQuartile } from './labels';
@@ -71,10 +74,12 @@ test('SCImago: descarta revistas que ya están en la base curada (mismo ISSN)', 
 
 test('Afinidad: un título en español encaja con categorías en inglés', () => {
   const query = { ...baseQuery, title: 'Evaluación de la educación superior y la formación docente' };
-  const edu = evaluateThematicAffinity(subscription, query);
-  const onco = evaluateThematicAffinity(openAccess, query);
-  assert.ok((edu.matchedTerms ?? 0) >= 1, 'educación debe coincidir con Education');
-  assert.equal(onco.matchedTerms, 0);
+  const ctx = prepareAffinityContext(query, [diamond, openAccess, subscription]);
+  assert.equal(ctx.profile.topics[0]?.category, 'Education', 'educación debe llevar a Education');
+  const edu = evaluateThematicAffinity(subscription, query, ctx);
+  const onco = evaluateThematicAffinity(openAccess, query, ctx);
+  assert.ok((edu.relevance ?? 0) > 0.5);
+  assert.equal(onco.relevance, 0);
   assert.ok(edu.score > onco.score);
 });
 
@@ -159,4 +164,48 @@ test('Coste: una exención discrecional no se da por hecha', () => {
   assert.equal(getEconomicTier(item, 500), 2, 'va después de las que caben sin condiciones');
   const onlyFree = filterAndRankJournals([plosLike], baseQuery, { ...DEFAULT_FILTER_OPTIONS, costPriorityMode: 'only_zero_apc' });
   assert.equal(onlyFree.length, 0);
+});
+
+test('Raíces: inglés y español comparten raíz y no se confunden prefijos', () => {
+  assert.equal(stemWord('education'), stemWord('educacion'));
+  assert.equal(stemWord('music'), stemWord('musica'));
+  assert.notEqual(stemWord('microfinance'), stemWord('microfluidics'));
+  assert.notEqual(stemWord('organizational'), stemWord('organic'));
+});
+
+test('Temas: se detectan por el vocabulario de las revistas de cada categoría', () => {
+  const journals = [diamond, openAccess, subscription];
+  const profile = inferTopicsLexical({ ...baseQuery, title: 'Oncology outcomes in hematology patients' }, getTopicIndex(journals));
+  assert.equal(profile.source, 'lexical');
+  assert.deepEqual(profile.topics.map(t => t.category).sort(), ['Hematology', 'Oncology']);
+  assert.equal(profile.topics[0].weight, 1);
+});
+
+test('Temas: los temas indicados (IA o edición manual) mandan sobre el vocabulario', () => {
+  const journals = [diamond, openAccess, subscription];
+  const query: ManuscriptQuery = {
+    ...baseQuery,
+    title: 'Educación superior',
+    topicProfile: { source: 'manual', topics: [{ category: 'Oncology', weight: 1 }], extraTerms: [] },
+  };
+  const results = filterAndRankJournals(journals, query, DEFAULT_FILTER_OPTIONS);
+  assert.deepEqual(results.map(r => r.journal.id), [openAccess.id]);
+  assert.deepEqual(results[0].sharedTopics.map(t => t.category), ['Oncology']);
+});
+
+test('IA: la respuesta se valida contra la lista de categorías y se normaliza', () => {
+  const profile = parseAiAnswer({
+    interpretation: 'Trabajo sobre docencia universitaria.',
+    categories: [
+      { name: 'education', weight: 0.8 },
+      { name: 'Categoría inventada', weight: 1 },
+      { name: 'Oncology', weight: 0.4 },
+      { name: 'Education', weight: 0.2 },
+    ],
+    keywords: ['higher education', 42, 'teaching'],
+  }, dataset.categories, 'modelo-prueba');
+  assert.equal(profile.source, 'ai');
+  assert.deepEqual(profile.topics, [{ category: 'Education', weight: 1 }, { category: 'Oncology', weight: 0.5 }]);
+  assert.deepEqual(profile.extraTerms, ['higher education', 'teaching']);
+  assert.equal(profile.interpretation, 'Trabajo sobre docencia universitaria.');
 });
