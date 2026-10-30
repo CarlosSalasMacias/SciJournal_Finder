@@ -13,6 +13,8 @@ interface SearchPanelProps {
   aiConfigured: boolean;
   onToggleAi: (enabled: boolean) => void;
   onOpenAiSettings: () => void;
+  /** Mostrar la opción de IA (desactivada mientras no esté validada). */
+  showAi?: boolean;
 }
 
 const DISCIPLINES = [
@@ -44,7 +46,8 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({
   aiEnabled,
   aiConfigured,
   onToggleAi,
-  onOpenAiSettings
+  onOpenAiSettings,
+  showAi = false
 }) => {
   const [showAdvancedAbstract, setShowAdvancedAbstract] = useState(false);
   const [keywordInput, setKeywordInput] = useState('');
@@ -276,6 +279,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          {showAi && (
           <div className="inline-flex items-center gap-1.5 text-xs text-slate-700">
             <Sparkles className={`w-3.5 h-3.5 ${aiEnabled ? 'text-amber-500' : 'text-slate-400'}`} aria-hidden="true" />
             {aiConfigured ? (
@@ -300,6 +304,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({
               {aiConfigured ? <Settings className="w-3.5 h-3.5" /> : 'Configurar'}
             </button>
           </div>
+          )}
 
           <button
             type="button"

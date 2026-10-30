@@ -42,6 +42,12 @@ const INITIAL_QUERY: ManuscriptQuery = {
 
 type DataStatus = 'loading' | 'ready' | 'error';
 
+/**
+ * Interpretación con IA (Gemini). Desactivada por defecto hasta validarla;
+ * se activa al compilar con VITE_ENABLE_AI=true.
+ */
+const AI_FEATURE = import.meta.env.VITE_ENABLE_AI === 'true';
+
 export default function App() {
   // Base curada (cargada al instante) + base SCImago (se descarga al abrir la app)
   const [loadedJournals, setLoadedJournals] = useState<Journal[] | null>(null);
@@ -100,7 +106,7 @@ export default function App() {
     const query: ManuscriptQuery = { ...draftQuery };
     let profile: TopicProfile | undefined;
     if (hasManuscriptText(query)) {
-      if (aiSettings.enabled && aiSettings.apiKey) {
+      if (AI_FEATURE && aiSettings.enabled && aiSettings.apiKey) {
         try {
           profile = await inferTopicsWithAI(query, topicIndex.categories, { apiKey: aiSettings.apiKey, model: aiSettings.model });
         } catch (err) {
@@ -227,6 +233,7 @@ export default function App() {
           aiConfigured={aiSettings.apiKey !== ''}
           onToggleAi={enabled => updateAiSettings({ ...aiSettings, enabled })}
           onOpenAiSettings={() => setIsAiSettingsOpen(true)}
+          showAi={AI_FEATURE}
         />
 
         {hasSearched && appliedQuery.topicProfile && detectedProfile && (
