@@ -18,6 +18,9 @@ on:
 permissions:
   contents: read
 
+env:
+  GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
 jobs:
   eval:
     runs-on: ubuntu-latest
@@ -29,6 +32,15 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Modelos de Gemini disponibles
+        if: ${{ env.GEMINI_API_KEY != '' }}
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          curl -s -m 30 -H "x-goog-api-key: $GEMINI_API_KEY" \
+            "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200" \
+            | jq -r '[.models[] | select(.supportedGenerationMethods | index("generateContent")) | .name | sub("models/"; "")] | "Modelos disponibles: " + join(", ")' \
+            | sed 's/^/::notice::/'
       - name: Evaluar
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
