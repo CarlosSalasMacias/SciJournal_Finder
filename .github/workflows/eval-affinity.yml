@@ -10,6 +10,10 @@ on:
         default: test
         type: choice
         options: [test, dev]
+      model:
+        description: 'Modelo de Gemini (vacío = gemini-flash-latest)'
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -17,6 +21,7 @@ permissions:
 jobs:
   eval:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -27,6 +32,7 @@ jobs:
       - name: Evaluar
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ inputs.model }}
         run: |
           if [ -n "$GEMINI_API_KEY" ]; then
             npm run eval -- --set ${{ inputs.set }} --ai

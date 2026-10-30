@@ -37,8 +37,8 @@ async function aiProfile(query: ManuscriptQuery): Promise<TopicProfile> {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       // Errores de configuración (clave o modelo): no tiene sentido reintentar.
-      if (attempt >= 4 || /no es válida|permiso|no existe/i.test(msg)) throw err;
-      const wait = /límite/i.test(msg) ? 30000 * attempt : 3000;
+      if (attempt >= 3 || /no es válida|permiso|no existe/i.test(msg)) throw err;
+      const wait = /límite/i.test(msg) ? 20000 : 3000;
       console.log(`   reintento ${attempt} en ${wait / 1000} s: ${msg}`);
       await sleep(wait);
     }
@@ -70,6 +70,11 @@ async function run(mode: 'lexical' | 'ai') {
         console.log(`${q.id} ERROR IA: ${msg}`);
         annotate('warning', `${q.id}: ${msg}`);
         failed++;
+        // Si las dos primeras fallan, el problema es la clave, el modelo o la cuota: no vale la pena seguir.
+        if (failed >= 2 && failed === n + 1) {
+          annotate('warning', 'Se detiene la evaluación con IA: las primeras búsquedas fallaron.');
+          throw new Error(`Evaluación con IA detenida: ${msg}`);
+        }
         // Cuenta como fallo (0) para no inflar el resultado.
         n++;
         continue;

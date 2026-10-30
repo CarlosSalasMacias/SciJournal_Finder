@@ -97,9 +97,11 @@ export async function inferTopicsWithAI(
 ): Promise<TopicProfile> {
   const model = settings.model?.trim() || DEFAULT_GEMINI_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  // Si Gemini no responde en 60 s se cancela la petición.
+  const timeout = AbortSignal.timeout(60000);
   const res = await fetch(url, {
     method: 'POST',
-    signal,
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': settings.apiKey.trim() },
     body: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: buildPrompt(query, categories) }] }],
@@ -117,7 +119,9 @@ export async function inferTopicsWithAI(
     if (res.status === 400 && /api key/i.test(detail)) throw new Error('La clave de Gemini no es válida.');
     if (res.status === 403) throw new Error('La clave de Gemini no tiene permiso para este modelo.');
     if (res.status === 404) throw new Error(`El modelo «${model}» no existe o no está disponible.`);
-    if (res.status === 429) throw new Error('Se alcanzó el límite de uso gratuito de Gemini. Espere un minuto e inténtelo de nuevo.');
+    if (res.status === 429) {
+      throw new Error(`Se alcanzó el límite de uso de Gemini para «${model}». Espere un minuto o pruebe otro modelo.${detail ? ` (${detail.slice(0, 300)})` : ''}`);
+    }
     throw new Error(`Gemini respondió con un error (HTTP ${res.status})${detail ? `: ${detail}` : ''}.`);
   }
 
