@@ -13,7 +13,8 @@ export interface QuartileEntry {
 export type PublicationModel = 
   | 'traditional_no_mandatory_fee' 
   | 'hybrid' 
-  | 'full_open_access';
+  | 'full_open_access'
+  | 'subscription_or_hybrid_unverified'; // SCImago: no es OA, sin saber si es suscripción pura o híbrida
 
 export type FormatFreeStatus = 
   | 'confirmed'           // Permite formato libre en primer envío (Your Paper Your Way)
@@ -71,6 +72,8 @@ export interface VerificationSource {
 
 export interface Journal {
   id: string;
+  /** 'curated': ficha revisada a mano. 'scimago': generada automáticamente desde el CSV de SCImago. */
+  dataSource?: 'curated' | 'scimago';
   title: string;
   issn: string;
   eissn?: string;
@@ -116,6 +119,12 @@ export interface Journal {
   // Métricas editoriales adicionales
   averageReviewWeeks?: number;
   acceptanceRatePercent?: number;
+
+  // Métricas SCImago (solo revistas importadas del CSV)
+  sjrScore?: number;
+  hIndex?: number;
+  country?: string;
+  scimagoAreas?: string[];
 }
 
 export interface ManuscriptQuery {
@@ -150,14 +159,20 @@ export interface ScoringWeights {
 
 export interface EvaluatedJournal {
   journal: Journal;
-  effectiveCostUSD: number;
+  /** null cuando el coste no se conoce (p. ej. revistas OA de SCImago sin APC verificado). */
+  effectiveCostUSD: number | null;
+  costNotes: string;
   appliedDiscountName?: string;
   appliedDiscountPercent: number;
   isCostConditional: boolean;
   budgetEligibility: BudgetEligibility;
+  /** Exención discrecional disponible previa solicitud (no incluida en effectiveCostUSD). */
+  conditionalWaiver?: { name: string; percent: number; costIfGrantedUSD: number };
   thematicAffinity: 'high' | 'medium' | 'low';
   thematicAffinityScore: number; // 0 - 100
   thematicJustification: string;
+  /** Términos del manuscrito que coinciden con la revista (null si no se escribió título/resumen/palabras clave). */
+  thematicMatchedTerms: number | null;
   overallScore: number; // 0 - 100
   scoreBreakdown: {
     thematic: number;

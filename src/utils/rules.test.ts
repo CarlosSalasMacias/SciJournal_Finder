@@ -290,12 +290,12 @@ test('FilterAndRankJournals: Strictly prioritizes 0 APC journals first, then < 5
     title: 'Educacion superior',
     abstract: 'Estudio de metodologia',
     keywords: ['educacion'],
-    primaryDiscipline: 'Ciencias Sociales',
+    primaryDiscipline: 'Todas las disciplinas',
     articleType: 'Investigación original',
     language: 'Español',
     accessPreference: 'all',
     acceptableQuartiles: ['Q1', 'Q2'],
-    maxBudgetUSD: 500,
+    maxBudgetUSD: 2000,
     preferFormatFree: false,
     excludeOverBudget: false,
     excludeUnverifiedCosts: false,
@@ -309,10 +309,7 @@ test('FilterAndRankJournals: Strictly prioritizes 0 APC journals first, then < 5
   const results = filterAndRankJournals(
     [lowCostJournal, traditionalJournal, openAccessJournal],
     sampleQuery,
-    {
-      ...DEFAULT_FILTER_OPTIONS,
-      maxCostUSD: 2000
-    }
+    { ...DEFAULT_FILTER_OPTIONS, includeUnrelated: true }
   );
 
   assert.equal(results.length, 3);
@@ -322,7 +319,7 @@ test('FilterAndRankJournals: Strictly prioritizes 0 APC journals first, then < 5
   assert.equal(results[1].journal.id, 'test-low-cost', 'Tier 2 must be < 500 USD journal');
   assert.equal(results[1].effectiveCostUSD, 400);
 
-  assert.equal(results[2].journal.id, 'test-oa', 'Tier 3 must be > 500 USD journal');
+  assert.equal(results[2].journal.id, 'test-oa', 'Then the more expensive journal within budget');
   assert.equal(results[2].effectiveCostUSD, 1800);
 });
 
@@ -337,7 +334,7 @@ test('FilterAndRankJournals: Correctly handles completely blank search fields wi
     language: 'Español',
     accessPreference: 'all',
     acceptableQuartiles: ['Q1', 'Q2', 'Q3'],
-    maxBudgetUSD: 500,
+    maxBudgetUSD: 2000,
     preferFormatFree: false,
     excludeOverBudget: false,
     excludeUnverifiedCosts: false,
@@ -348,7 +345,7 @@ test('FilterAndRankJournals: Correctly handles completely blank search fields wi
   const results = filterAndRankJournals(
     [traditionalJournal, openAccessJournal],
     blankQuery,
-    { ...DEFAULT_FILTER_OPTIONS, maxCostUSD: 2000 }
+    DEFAULT_FILTER_OPTIONS
   );
 
   assert.equal(results.length, 2);

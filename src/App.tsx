@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useDeferredValue } from 'react';
 import { Header } from './components/Header';
 import { SearchPanel } from './components/SearchPanel';
 import { FilterSidebar } from './components/FilterSidebar';
@@ -10,11 +10,12 @@ import { MethodologyModal } from './components/MethodologyModal';
 import { ComparisonBar } from './components/ComparisonBar';
 
 import { VERIFIED_JOURNALS_DATA } from './data/journalsData';
+import { loadScimagoJournals } from './data/scimagoLoader';
 import { ManuscriptQuery, Journal, ScoringWeights, EvaluatedJournal } from './types/journal';
 import { filterAndRankJournals, FilterOptions, DEFAULT_FILTER_OPTIONS } from './utils/filterJournals';
 import { DEFAULT_WEIGHTS } from './utils/rankingScorer';
 import { exportToCSV, generateMarkdownReport } from './utils/exportUtils';
-import { Download, Copy, Check, Sparkles, AlertCircle, FileSpreadsheet } from 'lucide-react';
+import { Copy, Check, FileSpreadsheet, Search, AlertCircle } from 'lucide-react';
 
 const INITIAL_QUERY: ManuscriptQuery = {
   title: '',
@@ -34,7 +35,24 @@ const INITIAL_QUERY: ManuscriptQuery = {
   authorRegion: 'none'
 };
 
+type DataStatus = 'loading' | 'ready' | 'error';
+
 export default function App() {
+  // Base curada (cargada al instante) + base SCImago (se descarga al abrir la app)
+  const [scimagoJournals, setScimagoJournals] = useState<Journal[]>([]);
+  const [dataStatus, setDataStatus] = useState<DataStatus>('loading');
+  useEffect(() => {
+    let cancelled = false;
+    loadScimagoJournals(VERIFIED_JOURNALS_DATA)
+      .then(list => { if (!cancelled) { setScimagoJournals(list); setDataStatus('ready'); } })
+      .catch(err => { console.error(err); if (!cancelled) setDataStatus('error'); });
+    return () => { cancelled = true; };
+  }, []);
+  const allJournals = useMemo(
+    () => [...VERIFIED_JOURNALS_DATA, ...scimagoJournals],
+    [scimagoJournals]
+  );
+
   const [draftQuery, setDraftQuery] = useState<ManuscriptQuery>(INITIAL_QUERY);
   const [appliedQuery, setAppliedQuery] = useState<ManuscriptQuery>(INITIAL_QUERY);
   const [hasSearched, setHasSearched] = useState(false);
@@ -60,17 +78,21 @@ export default function App() {
   // Ejecutar búsqueda al pulsar el botón
   const handleExecuteSearch = () => {
     setIsSearching(true);
+    // setTimeout permite que se pinte el indicador «Buscando…» antes del cálculo
     setTimeout(() => {
       setAppliedQuery({ ...draftQuery });
       setHasSearched(true);
       setIsSearching(false);
-    }, 200);
+    }, 0);
   };
 
   // Evaluación y filtrado reactivo a partir de la búsqueda aplicada
+  // useDeferredValue mantiene fluida la escritura en el buscador mientras se recalcula
+  const deferredFilters = useDeferredValue(filters);
   const evaluatedResults: EvaluatedJournal[] = useMemo(() => {
-    return filterAndRankJournals(VERIFIED_JOURNALS_DATA, appliedQuery, filters, weights);
-  }, [appliedQuery, filters, weights]);
+    if (!hasSearched) return [];
+    return filterAndRankJournals(allJournals, appliedQuery, deferredFilters, weights);
+  }, [allJournals, appliedQuery, deferredFilters, weights, hasSearched]);
 
   // Lista de revistas en comparativa
   const comparedEvaluatedJournals = useMemo(() => {
@@ -90,23 +112,7 @@ export default function App() {
 
   // Restablecer búsqueda
   const handleResetSearch = () => {
-    const resetQ: ManuscriptQuery = {
-      title: '',
-      abstract: '',
-      keywords: [],
-      primaryDiscipline: 'Todas las disciplinas',
-      subDiscipline: '',
-      articleType: 'Investigación original',
-      language: 'Español',
-      accessPreference: 'all',
-      acceptableQuartiles: ['Q1', 'Q2', 'Q3'],
-      maxBudgetUSD: 500,
-      preferFormatFree: false,
-      excludeOverBudget: false,
-      excludeUnverifiedCosts: false,
-      strictRequirementsOnly: false,
-      authorRegion: 'none'
-    };
+    const resetQ: ManuscriptQuery = { ...INITIAL_QUERY };
     setDraftQuery(resetQ);
     setAppliedQuery(resetQ);
     setHasSearched(false);
@@ -121,7 +127,7 @@ export default function App() {
 
   // Copiar informe Markdown
   const handleCopyMarkdown = async () => {
-    const report = generateMarkdownReport(evaluatedResults);
+    const report = generateMarkdownReport(evaluatedResults, appliedQuery.maxBudgetUSD);
     try {
       await navigator.clipboard.writeText(report);
       setCopiedReport(true);
@@ -137,12 +143,35 @@ export default function App() {
       <Header
         onOpenMethodology={() => setIsMethodologyOpen(true)}
         onOpenWeights={() => setIsWeightsOpen(true)}
-        totalJournals={VERIFIED_JOURNALS_DATA.length}
+        totalJournals={allJournals.length}
         filteredCount={evaluatedResults.length}
       />
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+        {dataStatus !== 'ready' && (
+          <div
+            role="status"
+            className={`mb-4 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${
+              dataStatus === 'error'
+                ? 'border-red-200 bg-red-50 text-red-800'
+                : 'border-indigo-200 bg-indigo-50 text-indigo-800'
+            }`}
+          >
+            {dataStatus === 'error' ? (
+              <>
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                No se pudo cargar la base SCImago. Se muestran solo las {VERIFIED_JOURNALS_DATA.length} revistas revisadas a mano. Recargue la página para reintentar.
+              </>
+            ) : (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin shrink-0" />
+                Cargando la base SCImago (más de 24.000 revistas Q1–Q3)…
+              </>
+            )}
+          </div>
+        )}
 
         {/* Buscador y Perfil del Manuscrito con Botón de Búsqueda */}
         <SearchPanel
@@ -163,7 +192,7 @@ export default function App() {
             <FilterSidebar
               filters={filters}
               onChangeFilters={setFilters}
-              journals={VERIFIED_JOURNALS_DATA}
+              journals={allJournals}
               totalResultsCount={evaluatedResults.length}
             />
           </div>
@@ -173,12 +202,16 @@ export default function App() {
             
             {/* Barra de utilidades superiores de la tabla */}
             <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
-              <div className="text-xs text-slate-600">
-                Mostrando <strong className="text-slate-900 font-bold">{evaluatedResults.length}</strong> revistas elegibles 
-                {appliedQuery.title ? (
-                  <span> ajustadas al manuscrito: <em className="text-indigo-700">«{appliedQuery.title.slice(0, 50)}...»</em></span>
-                ) : ''}
-
+              <div className="relative flex-1 min-w-[200px] max-w-sm">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-slate-400" aria-hidden="true" />
+                <input
+                  type="search"
+                  aria-label="Filtrar resultados por nombre, ISSN o editorial"
+                  value={filters.searchQuery ?? ''}
+                  onChange={e => setFilters(prev => ({ ...prev, searchQuery: e.target.value }))}
+                  placeholder="Filtrar por nombre, ISSN o editorial…"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-slate-800"
+                />
               </div>
 
               {/* Botones de Exportación */}
@@ -225,6 +258,8 @@ export default function App() {
               sortBy={filters.sortBy}
               onSortChange={newSort => setFilters(prev => ({ ...prev, sortBy: newSort }))}
               hasSearched={hasSearched}
+              maxBudgetUSD={appliedQuery.maxBudgetUSD}
+              manuscriptTitle={appliedQuery.title}
             />
 
           </div>
@@ -282,7 +317,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center space-x-2">
             <span className="font-bold text-slate-800">SciJournal Finder</span>
-            <span>• Base de datos de revistas científicas Q1–Q3 con verificación primaria</span>
+            <span>• {VERIFIED_JOURNALS_DATA.length} revistas revisadas a mano + {scimagoJournals.length.toLocaleString('es-ES')} revistas Q1–Q3 de SCImago 2025</span>
           </div>
           <div className="flex items-center space-x-4">
             <button

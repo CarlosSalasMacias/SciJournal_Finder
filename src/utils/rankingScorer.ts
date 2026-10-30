@@ -33,7 +33,8 @@ function getQuartileScore(quartiles: Journal['quartiles']): { score: number; bes
 /**
  * Puntuación económica: premia 0 USD obligatorio y costes <= 500 USD
  */
-function getCostScore(effectiveCostUSD: number, maxBudgetUSD: number): number {
+function getCostScore(effectiveCostUSD: number | null, maxBudgetUSD: number): number {
+  if (effectiveCostUSD === null) return 40; // Coste desconocido: puntuación intermedia-baja
   if (effectiveCostUSD === 0) return 100;
   if (effectiveCostUSD <= 200) return 85;
   if (effectiveCostUSD <= maxBudgetUSD) return 65;
@@ -67,6 +68,10 @@ export function evaluateJournal(
   query: ManuscriptQuery,
   weights: ScoringWeights = DEFAULT_WEIGHTS
 ): EvaluatedJournal {
+  // «Priorizar formato libre» desmarcado = el formato no cuenta en la puntuación.
+  if (query.preferFormatFree === false) {
+    weights = { ...weights, formatFree: 0 };
+  }
   const costRes = calculateEffectiveCost(journal, query);
   const affinityRes = evaluateThematicAffinity(journal, query);
   const quartileRes = getQuartileScore(journal.quartiles);
@@ -74,12 +79,13 @@ export function evaluateJournal(
   const formatScore = getFormatScore(journal.formatFreeSubmission);
   const verifScore = getVerificationScore(journal.verificationStatus);
 
+  // Si todas las ponderaciones son 0 se evita dividir entre cero.
   const totalWeight =
     weights.thematicAffinity +
     weights.quartilePrestige +
     weights.costAdvantage +
     weights.formatFree +
-    weights.verificationTrust;
+    weights.verificationTrust || 1;
 
   const weightedThematic = (affinityRes.score * weights.thematicAffinity) / totalWeight;
   const weightedQuartile = (quartileRes.score * weights.quartilePrestige) / totalWeight;
@@ -94,6 +100,8 @@ export function evaluateJournal(
   return {
     journal,
     effectiveCostUSD: costRes.effectiveCostUSD,
+    costNotes: costRes.costBreakdownNotes,
+    conditionalWaiver: costRes.conditionalWaiver,
     appliedDiscountName: costRes.appliedDiscountName,
     appliedDiscountPercent: costRes.appliedDiscountPercent,
     isCostConditional: costRes.isCostConditional,
@@ -101,6 +109,7 @@ export function evaluateJournal(
     thematicAffinity: affinityRes.level,
     thematicAffinityScore: affinityRes.score,
     thematicJustification: affinityRes.justification,
+    thematicMatchedTerms: affinityRes.matchedTerms,
     overallScore,
     scoreBreakdown: {
       thematic: Math.round(weightedThematic * 10) / 10,

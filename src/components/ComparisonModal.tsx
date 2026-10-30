@@ -1,4 +1,6 @@
 import React from 'react';
+import { useEscapeKey } from '../utils/useEscapeKey';
+import { publicationModelLabel } from '../utils/labels';
 import { EvaluatedJournal } from '../types/journal';
 import { 
   X, 
@@ -26,6 +28,7 @@ export const ComparisonModal: React.FC<ComparisonModalProps> = ({
   onRemoveFromCompare,
   onOpenDetails
 }) => {
+  useEscapeKey(onClose);
   if (comparedJournals.length === 0) return null;
 
   return (
@@ -154,7 +157,7 @@ export const ComparisonModal: React.FC<ComparisonModalProps> = ({
                       </span>
                     ) : (
                       <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800">
-                        Acceso Abierto Completo con APC
+                        {publicationModelLabel(item.journal)}
                       </span>
                     )}
                   </td>
@@ -172,11 +175,13 @@ export const ComparisonModal: React.FC<ComparisonModalProps> = ({
                 {comparedJournals.map(item => (
                   <td key={item.journal.id} className="p-3 border-r border-slate-200">
                     <div className="font-extrabold text-base text-slate-900">
-                      ${item.effectiveCostUSD} <span className="text-xs font-normal text-slate-500">USD</span>
+                      {item.effectiveCostUSD === null ? 'Sin verificar' : <>${item.effectiveCostUSD} <span className="text-xs font-normal text-slate-500">USD</span></>}
                     </div>
-                    <div className="text-[11px] text-slate-500 mt-0.5">
-                      Lista: {item.journal.listAPC.amount} {item.journal.listAPC.currency}
-                    </div>
+                    {item.effectiveCostUSD !== null && item.journal.listAPC.amount > 0 && (
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        Lista: {item.journal.listAPC.amount} {item.journal.listAPC.currency}
+                      </div>
+                    )}
                     {item.appliedDiscountName && (
                       <div className="text-[10px] text-emerald-700 font-semibold mt-0.5">
                         {item.appliedDiscountName} (-{item.appliedDiscountPercent}%)
@@ -186,12 +191,16 @@ export const ComparisonModal: React.FC<ComparisonModalProps> = ({
                       {item.budgetEligibility === 'under_500_confirmed' ? (
                         <span className="inline-flex items-center text-[10px] font-bold text-emerald-700">
                           <CheckCircle2 className="w-3 h-3 mr-1" />
-                          ≤ $500 Confirmado
+                          En presupuesto (confirmado)
                         </span>
                       ) : item.budgetEligibility === 'under_500_conditioned' ? (
                         <span className="inline-flex items-center text-[10px] font-semibold text-amber-700">
                           <AlertCircle className="w-3 h-3 mr-1" />
                           Condicionado a solicitud
+                        </span>
+                      ) : item.budgetEligibility === 'cost_unknown' ? (
+                        <span className="text-[10px] text-slate-600 font-medium">
+                          Coste sin verificar
                         </span>
                       ) : (
                         <span className="text-[10px] text-rose-600 font-medium">
@@ -257,7 +266,7 @@ export const ComparisonModal: React.FC<ComparisonModalProps> = ({
                   <td key={item.journal.id} className="p-3 border-r border-slate-200 space-y-1">
                     <div>
                       <span className="text-slate-500 font-medium">Revisión estimada: </span>
-                      <strong className="text-slate-800">{item.journal.averageReviewWeeks || '8-12'} semanas</strong>
+                      <strong className="text-slate-800">{item.journal.averageReviewWeeks ? `${item.journal.averageReviewWeeks} semanas` : 'No informada'}</strong>
                     </div>
                     <div>
                       <span className="text-slate-500 font-medium">Tasa aceptación: </span>

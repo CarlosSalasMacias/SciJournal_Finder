@@ -1,12 +1,21 @@
 import { Journal, ManuscriptQuery, BudgetEligibility } from '../types/journal';
 
 export interface CostCalculationResult {
-  effectiveCostUSD: number;
+  /** null = coste desconocido (no verificado). */
+  effectiveCostUSD: number | null;
   appliedDiscountName?: string;
   appliedDiscountPercent: number;
   isCostConditional: boolean;
   budgetEligibility: BudgetEligibility;
   costBreakdownNotes: string;
+  /** Exención discrecional (previa solicitud): NO se resta del coste estimado. */
+  conditionalWaiver?: ConditionalWaiver;
+}
+
+export interface ConditionalWaiver {
+  name: string;
+  percent: number;
+  costIfGrantedUSD: number;
 }
 
 /**
@@ -19,6 +28,20 @@ export function calculateEffectiveCost(
 ): CostCalculationResult {
   const maxBudget = query.maxBudgetUSD ?? 500;
   const authorRegion = query.authorRegion || 'none';
+
+  // 0. Revistas importadas de SCImago: solo se conoce si son OA y si son Diamante.
+  if (journal.dataSource === 'scimago' && !journal.isDiamondOA) {
+    const isOA = journal.publicationModel === 'full_open_access';
+    return {
+      effectiveCostUSD: null,
+      appliedDiscountPercent: 0,
+      isCostConditional: false,
+      budgetEligibility: 'cost_unknown',
+      costBreakdownNotes: isOA
+        ? 'Acceso abierto según SCImago/DOAJ, pero el importe del APC no está verificado. Consulte la web de la revista.'
+        : 'No es de acceso abierto según SCImago: suele publicarse sin APC por la vía de suscripción, pero pueden existir cargos por página o color. No verificado.'
+    };
+  }
 
   // 1. Caso: Revista Tradicional sin cargos obligatorios
   if (journal.publicationModel === 'traditional_no_mandatory_fee') {
@@ -68,6 +91,7 @@ export function calculateEffectiveCost(
   let bestDiscountPercent = 0;
   let bestDiscountName: string | undefined = undefined;
   let isConditional = false;
+  let bestWaiver: (typeof journal.availableDiscounts)[number] | undefined;
 
   for (const discount of journal.availableDiscounts) {
     let qualifies = false;
@@ -90,9 +114,11 @@ export function calculateEffectiveCost(
     } else if (discount.type === 'general_discount') {
       qualifies = true;
     } else if (discount.type === 'discretionary_waiver') {
-      // Exención previa solicitud (no automática)
-      qualifies = true;
-      conditional = true;
+      // La editorial la concede o la niega caso a caso: no se da por hecha.
+      if (!bestWaiver || discount.discountPercentage > bestWaiver.discountPercentage) {
+        bestWaiver = discount;
+      }
+      continue;
     }
 
     if (qualifies && discount.discountPercentage > bestDiscountPercent) {
@@ -104,11 +130,24 @@ export function calculateEffectiveCost(
 
   const finalCost = Math.round(baseAPC_USD * (1 - bestDiscountPercent / 100) + otherMandatoryUSD);
 
+  // Exención discrecional: solo informativa, pero si la concedieran podría entrar en presupuesto
+  let conditionalWaiver: ConditionalWaiver | undefined;
+  if (bestWaiver && bestWaiver.discountPercentage > bestDiscountPercent) {
+    conditionalWaiver = {
+      name: bestWaiver.title,
+      percent: bestWaiver.discountPercentage,
+      costIfGrantedUSD: Math.round(baseAPC_USD * (1 - bestWaiver.discountPercentage / 100) + otherMandatoryUSD)
+    };
+  }
+
   let eligibility: BudgetEligibility;
   if (journal.verificationStatus === 'pending_confirmation') {
     eligibility = 'cost_unknown';
   } else if (finalCost <= maxBudget) {
     eligibility = isConditional ? 'under_500_conditioned' : 'under_500_confirmed';
+  } else if (conditionalWaiver && conditionalWaiver.costIfGrantedUSD <= maxBudget) {
+    eligibility = 'under_500_conditioned';
+    isConditional = true;
   } else {
     eligibility = 'over_500';
   }
@@ -120,6 +159,9 @@ export function calculateEffectiveCost(
       notes += ' ATENCIÓN: Descuento condicionado a solicitud o verificación institucional.';
     }
   }
+  if (conditionalWaiver) {
+    notes += ` Posible exención previa solicitud: ${conditionalWaiver.name} (-${conditionalWaiver.percent}%), que dejaría el coste en ${conditionalWaiver.costIfGrantedUSD} USD si la editorial la concede. No se resta del coste estimado.`;
+  }
 
   return {
     effectiveCostUSD: finalCost,
@@ -127,6 +169,7 @@ export function calculateEffectiveCost(
     appliedDiscountPercent: bestDiscountPercent,
     isCostConditional: isConditional,
     budgetEligibility: eligibility,
-    costBreakdownNotes: notes
+    costBreakdownNotes: notes,
+    conditionalWaiver
   };
 }

@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { getEconomicTier } from '../utils/filterJournals';
+import { bestQuartile } from '../utils/labels';
 import { EvaluatedJournal, Journal } from '../types/journal';
 import { 
   ExternalLink, 
@@ -23,7 +25,12 @@ interface JournalsTableProps {
   sortBy: string;
   onSortChange: (newSort: any) => void;
   hasSearched: boolean;
+  maxBudgetUSD: number;
+  manuscriptTitle?: string;
 }
+
+const PAGE_SIZE = 50;
+const MAX_QUARTILES_SHOWN = 3;
 
 export const JournalsTable: React.FC<JournalsTableProps> = ({
   results,
@@ -32,8 +39,14 @@ export const JournalsTable: React.FC<JournalsTableProps> = ({
   onOpenDetails,
   sortBy,
   onSortChange,
-  hasSearched
+  hasSearched,
+  maxBudgetUSD,
+  manuscriptTitle
 }) => {
+  // Con miles de resultados se pintan por páginas para no bloquear el navegador
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  useEffect(() => setVisibleCount(PAGE_SIZE), [results]);
+
   if (!hasSearched) {
     return (
       <div className="bg-white rounded-xl border border-slate-200 p-12 text-center shadow-2xs">
@@ -60,11 +73,15 @@ export const JournalsTable: React.FC<JournalsTableProps> = ({
           No se encontraron revistas con los criterios actuales
         </h3>
         <p className="text-xs text-slate-500 max-w-md mx-auto mb-4">
-          Prueba a relajar los filtros de cuartil, ampliar el presupuesto máximo o desactivar el modo de exclusión estricta.
+          Prueba a relajar los filtros de cuartil, ampliar el presupuesto máximo, desactivar el modo estricto o activar «Mostrar también revistas sin coincidencia temática».
         </p>
       </div>
     );
   }
+
+  const tierCounts = [0, 0, 0, 0, 0];
+  for (const r of results) tierCounts[getEconomicTier(r, maxBudgetUSD)]++;
+  const visibleResults = results.slice(0, visibleCount);
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
@@ -72,15 +89,26 @@ export const JournalsTable: React.FC<JournalsTableProps> = ({
       <div className="px-5 py-3 border-b border-slate-200 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3 text-xs">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-semibold text-slate-800">
-            {results.length} {results.length === 1 ? 'revista encontrada' : 'revistas encontradas'}
+            {results.length.toLocaleString('es-ES')} {results.length === 1 ? 'revista encontrada' : 'revistas encontradas'}
+            {manuscriptTitle?.trim() && (
+              <span className="font-normal text-slate-500"> para «{manuscriptTitle.length > 50 ? `${manuscriptTitle.slice(0, 50)}…` : manuscriptTitle}»</span>
+            )}
           </span>
           <span className="text-slate-300">•</span>
           <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-            1º Sin APC: {results.filter(r => r.effectiveCostUSD === 0).length} revistas (0 USD)
+            Sin APC: {tierCounts[0].toLocaleString('es-ES')}
           </span>
           <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-blue-100 text-blue-800 border border-blue-200">
-            2º &lt; 500 USD: {results.filter(r => r.effectiveCostUSD > 0 && r.effectiveCostUSD <= 500).length} revistas
+            ≤ {maxBudgetUSD} USD: {tierCounts[1].toLocaleString('es-ES')}
           </span>
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200">
+            Coste sin verificar: {tierCounts[3].toLocaleString('es-ES')}
+          </span>
+          {tierCounts[2] > 0 && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
+              Solo con exención: {tierCounts[2].toLocaleString('es-ES')}
+            </span>
+          )}
         </div>
 
         {/* Sort selector */}
@@ -94,7 +122,7 @@ export const JournalsTable: React.FC<JournalsTableProps> = ({
             onChange={e => onSortChange(e.target.value)}
             className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-indigo-500 text-slate-800 font-medium"
           >
-            <option value="score">1º Sin APC (0 USD) → 2º &lt; $500 USD (Predeterminado)</option>
+            <option value="score">Puntuación recomendada (predeterminado)</option>
             <option value="cost_asc">Menor Coste Final Estimado (USD)</option>
             <option value="affinity">Mayor Afinidad Temática</option>
             <option value="quartile">Mejor Cuartil (Q1 → Q2 → Q3)</option>
@@ -145,10 +173,13 @@ export const JournalsTable: React.FC<JournalsTableProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
-            {results.map(item => {
+            {visibleResults.map(item => {
               const j = item.journal;
               const isCompared = selectedToCompare.includes(j.id);
-              const bestQ = j.quartiles[0]?.quartile || 'Q3';
+              // Mejor cuartil primero; en fichas SCImago puede haber muchas categorías
+              const sortedQuartiles = [...j.quartiles].sort((a, b) => a.quartile.localeCompare(b.quartile));
+              const shownQuartiles = sortedQuartiles.slice(0, MAX_QUARTILES_SHOWN);
+              const hiddenQuartiles = sortedQuartiles.length - shownQuartiles.length;
 
               return (
                 <tr
@@ -163,6 +194,7 @@ export const JournalsTable: React.FC<JournalsTableProps> = ({
                       type="checkbox"
                       checked={isCompared}
                       onChange={() => onToggleCompare(j.id)}
+                      aria-label={`Comparar ${j.title}`}
                       className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 border-slate-300 cursor-pointer"
                       title={
                         selectedToCompare.length >= 4 && !isCompared
@@ -181,7 +213,7 @@ export const JournalsTable: React.FC<JournalsTableProps> = ({
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center group font-semibold text-slate-900 hover:text-indigo-700"
-                        title="Abrir página oficial de la revista"
+                        title={j.dataSource === 'scimago' ? 'Abrir la ficha de la revista en SCImago' : 'Abrir página oficial de la revista'}
                       >
                         {j.title}
                         <ExternalLink className="w-3 h-3 ml-1 text-slate-400 group-hover:text-indigo-600 inline" />
@@ -192,16 +224,25 @@ export const JournalsTable: React.FC<JournalsTableProps> = ({
                       <span className="text-slate-300">•</span>
                       <span className="font-mono text-[10px] text-slate-400">ISSN {j.issn}</span>
                     </div>
-                    <div className="mt-1">
+                    <div className="mt-1 flex flex-wrap gap-1">
                       <span className="text-[10px] font-medium px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded">
                         {j.primaryDiscipline}
                       </span>
+                      {j.dataSource === 'scimago' ? (
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 bg-slate-50 text-slate-500 rounded border border-slate-200" title="Ficha generada automáticamente desde SCImago: coste y formato sin verificar">
+                          Ficha automática
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded border border-indigo-200" title="Ficha revisada a mano con fuentes primarias">
+                          Ficha revisada
+                        </span>
+                      )}
                     </div>
                   </td>
 
                   {/* Cuartil Oficial (Scopus / Clarivate WoS) */}
                   <td className="py-3.5 px-3 align-top space-y-1.5">
-                    {j.quartiles.map((q, idx) => (
+                    {shownQuartiles.map((q, idx) => (
                       <div key={idx} className="flex flex-col">
                         <div className="flex items-center space-x-1.5">
                           <span
@@ -224,6 +265,10 @@ export const JournalsTable: React.FC<JournalsTableProps> = ({
                         </span>
                       </div>
                     ))}
+                    {hiddenQuartiles > 0 && (
+                      <span className="text-[10px] text-slate-400">+{hiddenQuartiles} categorías más</span>
+                    )}
+                    {!bestQuartile(j) && <span className="text-[10px] text-slate-400">Sin cuartil</span>}
                   </td>
 
                   {/* Modalidad de Publicación */}
@@ -249,12 +294,21 @@ export const JournalsTable: React.FC<JournalsTableProps> = ({
                         </span>
                         <p className="text-[10px] text-slate-500 mt-0.5">0 USD suscripción / APC opcional</p>
                       </div>
+                    ) : j.publicationModel === 'subscription_or_hybrid_unverified' ? (
+                      <div>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-50 text-slate-700 border border-slate-200">
+                          Suscripción / híbrida
+                        </span>
+                        <p className="text-[10px] text-slate-500 mt-0.5">No es OA según SCImago</p>
+                      </div>
                     ) : (
                       <div>
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
                           Acceso Abierto (Gold)
                         </span>
-                        <p className="text-[10px] text-slate-500 mt-0.5">APC obligatorio con waivers</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          {j.dataSource === 'scimago' ? 'Suele cobrar APC' : 'APC obligatorio con waivers'}
+                        </p>
                       </div>
                     )}
                   </td>
@@ -276,10 +330,17 @@ export const JournalsTable: React.FC<JournalsTableProps> = ({
                         </span>
                         <p className="text-[10px] text-slate-400 mt-0.5">Requiere maquetación inicial</p>
                       </div>
-                    ) : (
+                    ) : j.formatFreeSubmission === 'partially_verified' ? (
                       <div>
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
                           Directrices estándar
+                        </span>
+                        <p className="text-[10px] text-slate-500 mt-0.5">Consultar guía de autor</p>
+                      </div>
+                    ) : (
+                      <div>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
+                          Sin verificar
                         </span>
                         <p className="text-[10px] text-slate-500 mt-0.5">Consultar guía de autor</p>
                       </div>
@@ -288,63 +349,74 @@ export const JournalsTable: React.FC<JournalsTableProps> = ({
 
                   {/* Coste Final Estimado */}
                   <td className="py-3.5 px-3 align-top">
-                    <div className="flex items-center space-x-1.5">
-                      <span className="font-bold text-sm text-slate-900">
-                        ${item.effectiveCostUSD} <span className="text-[10px] font-normal text-slate-500">USD</span>
-                      </span>
-                    </div>
-
-                    <div className="mt-1">
-                      {item.effectiveCostUSD === 0 ? (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                          1º Sin APC (0 USD)
-                        </span>
-                      ) : item.effectiveCostUSD <= 500 ? (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800 border border-blue-300">
-                          2º &lt; 500 USD
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
-                          3º &gt; 500 USD
-                        </span>
-                      )}
-                    </div>
-
-                    {item.appliedDiscountName ? (
-                      <div className="text-[10px] text-emerald-700 font-medium truncate max-w-[130px] mt-0.5" title={item.appliedDiscountName}>
-                        Desc: -{item.appliedDiscountPercent}% ({item.appliedDiscountName})
-                      </div>
+                    {item.effectiveCostUSD === null ? (
+                      <>
+                        <span className="font-semibold text-xs text-slate-600">Sin verificar</span>
+                        <p className="text-[10px] text-slate-500 mt-1 line-clamp-3" title={item.costNotes}>
+                          {j.publicationModel === 'full_open_access' ? 'Probable APC: consultar web' : 'Probable 0 USD vía suscripción'}
+                        </p>
+                      </>
                     ) : (
-                      <div className="text-[10px] text-slate-400 mt-0.5">
-                        Lista: {j.listAPC.amount} {j.listAPC.currency}
-                      </div>
+                      <>
+                        <span className="font-bold text-sm text-slate-900">
+                          ${item.effectiveCostUSD} <span className="text-[10px] font-normal text-slate-500">USD</span>
+                        </span>
+                        <div className="mt-1">
+                          {item.effectiveCostUSD === 0 ? (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              Sin APC (0 USD)
+                            </span>
+                          ) : item.effectiveCostUSD <= maxBudgetUSD ? (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800 border border-blue-300">
+                              ≤ {maxBudgetUSD} USD
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
+                              &gt; {maxBudgetUSD} USD
+                            </span>
+                          )}
+                        </div>
+                        {item.appliedDiscountName ? (
+                          <div className="text-[10px] text-emerald-700 font-medium truncate max-w-[130px] mt-0.5" title={item.appliedDiscountName}>
+                            Desc: -{item.appliedDiscountPercent}% ({item.appliedDiscountName})
+                          </div>
+                        ) : j.listAPC.amount > 0 && item.effectiveCostUSD > 0 ? (
+                          <div className="text-[10px] text-slate-400 mt-0.5">
+                            Lista: {j.listAPC.amount} {j.listAPC.currency}
+                          </div>
+                        ) : null}
+                        {item.conditionalWaiver && (
+                          <div className="text-[10px] text-amber-700 font-medium mt-0.5 max-w-[140px]" title={item.conditionalWaiver.name}>
+                            Con exención: {item.conditionalWaiver.costIfGrantedUSD} USD (previa solicitud)
+                          </div>
+                        )}
+                      </>
                     )}
                   </td>
-
 
                   {/* Elegibilidad Presupuesto */}
                   <td className="py-3.5 px-3 align-top">
                     {item.budgetEligibility === 'under_500_confirmed' ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                         <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" />
-                        ≤ $500 Confirmado
+                        En presupuesto
                       </span>
                     ) : item.budgetEligibility === 'under_500_conditioned' ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800 border border-amber-300" title="Condicionado a aprobación de waiver por dificultad económica o solicitud formal">
                         <AlertCircle className="w-3 h-3 mr-1 text-amber-600" />
-                        ≤ $500 Condicionado
+                        Condicionado
                       </span>
                     ) : item.budgetEligibility === 'cost_unknown' ? (
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-slate-100 text-slate-600">
-                        Coste desconocido
+                        Coste sin verificar
                       </span>
                     ) : (
                       <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-rose-50 text-rose-700 border border-rose-200">
-                        &gt; $500 USD
+                        Supera presupuesto
                       </span>
                     )}
                     <div className="text-[10px] text-slate-500 mt-0.5">
-                      Verificado: {j.lastVerificationDate}
+                      {j.dataSource === 'scimago' ? `SCImago ${j.lastVerificationDate}` : `Verificado: ${j.lastVerificationDate}`}
                     </div>
                   </td>
 
@@ -363,7 +435,7 @@ export const JournalsTable: React.FC<JournalsTableProps> = ({
                         {item.thematicAffinity.toUpperCase()}
                       </span>
                       <span className="text-[10px] font-semibold text-slate-700">
-                        {item.thematicAffinityScore}%
+                        {item.thematicAffinityScore}/100
                       </span>
                     </div>
                     <p className="text-[10px] text-slate-500 mt-1 line-clamp-2" title={item.thematicJustification}>
@@ -398,9 +470,9 @@ export const JournalsTable: React.FC<JournalsTableProps> = ({
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-colors w-full justify-center"
-                      title="Ver directrices oficiales para autores"
+                      title={j.dataSource === 'scimago' ? 'Buscar la guía para autores en Google' : 'Ver directrices oficiales para autores'}
                     >
-                      Guía autor
+                      {j.dataSource === 'scimago' ? 'Buscar guía' : 'Guía autor'}
                       <ExternalLink className="w-2.5 h-2.5 ml-1" />
                     </a>
                   </td>
@@ -410,6 +482,21 @@ export const JournalsTable: React.FC<JournalsTableProps> = ({
           </tbody>
         </table>
       </div>
+
+      {visibleCount < results.length && (
+        <div className="px-5 py-4 border-t border-slate-200 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <span className="text-slate-600">
+            Mostrando {visibleCount.toLocaleString('es-ES')} de {results.length.toLocaleString('es-ES')}
+          </span>
+          <button
+            type="button"
+            onClick={() => setVisibleCount(c => c + PAGE_SIZE)}
+            className="px-4 py-1.5 rounded-lg font-semibold text-white bg-slate-900 hover:bg-slate-800 cursor-pointer"
+          >
+            Mostrar {Math.min(PAGE_SIZE, results.length - visibleCount)} más
+          </button>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { FilterOptions } from '../utils/filterJournals';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { FilterOptions, DEFAULT_FILTER_OPTIONS, publisherGroup } from '../utils/filterJournals';
 import { Quartile, Journal } from '../types/journal';
 import { Filter, RotateCcw, Check, Sparkles } from 'lucide-react';
 
@@ -18,9 +18,18 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
 }) => {
   const [draftFilters, setDraftFilters] = useState<FilterOptions>(filters);
 
-  // Sincronizar si cambian externamente (ej. reset general)
+  // Sincronizar si cambian externamente. El buscador de texto y el orden se aplican al instante
+  // desde fuera del panel: en ese caso se conservan los cambios pendientes del borrador.
+  const previousFilters = useRef(filters);
   useEffect(() => {
-    setDraftFilters(filters);
+    const prev = previousFilters.current;
+    previousFilters.current = filters;
+    const onlyInstantChanged =
+      JSON.stringify({ ...prev, searchQuery: '', sortBy: 'score' }) ===
+      JSON.stringify({ ...filters, searchQuery: '', sortBy: 'score' });
+    setDraftFilters(draft =>
+      onlyInstantChanged ? { ...draft, searchQuery: filters.searchQuery, sortBy: filters.sortBy } : filters
+    );
   }, [filters]);
 
   const hasUnappliedFilters = JSON.stringify(draftFilters) !== JSON.stringify(filters);
@@ -58,40 +67,26 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
   };
 
   const resetAllFilters = () => {
-    const resetVal: FilterOptions = {
-      searchQuery: '',
-      selectedQuartiles: ['Q1', 'Q2', 'Q3'],
-      selectedDiscipline: 'all',
-      selectedPublicationModels: [],
-      onlyFormatFree: false,
-      onlyFreeOrUnder500: false,
-      maxCostUSD: 500,
-      costPriorityMode: 'zero_apc_first',
-      selectedPublishers: [],
-      selectedIndexDatabases: [],
-      selectedVerificationStatuses: [],
-      strictCriteriaOnly: false,
-      sortBy: 'score'
-    };
+    const resetVal: FilterOptions = { ...DEFAULT_FILTER_OPTIONS, searchQuery: filters.searchQuery, sortBy: filters.sortBy };
     setDraftFilters(resetVal);
     onChangeFilters(resetVal);
   };
 
-  // Extraer editoriales únicas
-  const allPublishers = Array.from(
-    new Set(
-      journals.map(j => {
-        if (j.publisher.includes('Elsevier')) return 'Elsevier';
-        if (j.publisher.includes('Springer')) return 'Springer Nature';
-        if (j.publisher.includes('Oxford')) return 'Oxford University Press';
-        if (j.publisher.includes('IEEE')) return 'IEEE';
-        if (j.publisher.includes('BMJ')) return 'BMJ';
-        if (j.publisher.includes('CSIC')) return 'CSIC';
-        if (j.publisher.includes('PLOS')) return 'PLOS';
-        return j.publisher;
-      })
-    )
-  ).slice(0, 7);
+  // Editoriales con más revistas (agrupando variantes del nombre) y recuento por cuartil.
+  // Se calcula una vez por lista de revistas, no en cada render.
+  const { topPublishers, quartileCounts } = useMemo(() => {
+    const pubCounts = new Map<string, number>();
+    const qCounts: Record<Quartile, number> = { Q1: 0, Q2: 0, Q3: 0 };
+    for (const j of journals) {
+      const group = publisherGroup(j.publisher);
+      pubCounts.set(group, (pubCounts.get(group) ?? 0) + 1);
+      for (const q of ['Q1', 'Q2', 'Q3'] as Quartile[]) {
+        if (j.quartiles.some(item => item.quartile === q)) qCounts[q]++;
+      }
+    }
+    const top = [...pubCounts.entries()].sort((x, y) => y[1] - x[1]).slice(0, 10);
+    return { topPublishers: top, quartileCounts: qCounts };
+  }, [journals]);
 
   return (
     <aside className="bg-white rounded-xl border border-slate-200 shadow-2xs p-4 space-y-5 text-sm">
@@ -140,7 +135,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
               Modo Estricto de Verificación
             </span>
             <span className="block text-[11px] text-slate-600 leading-snug">
-              Mostrar solo revistas 100% verificadas sin exenciones dudosas ni condicionales.
+              Mostrar solo revistas revisadas a mano y 100% verificadas, sin exenciones condicionales.
             </span>
           </div>
         </label>
@@ -154,7 +149,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
         <div className="grid grid-cols-3 gap-1.5">
           {(['Q1', 'Q2', 'Q3'] as Quartile[]).map(q => {
             const isSelected = draftFilters.selectedQuartiles.includes(q);
-            const count = journals.filter(j => j.quartiles.some(item => item.quartile === q)).length;
+            const count = quartileCounts[q];
             return (
               <button
                 key={q}
@@ -171,7 +166,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
                 }`}
               >
                 <span>{q}</span>
-                <span className="text-[10px] font-normal opacity-70">({count})</span>
+                <span className="text-[10px] font-normal opacity-70">({count.toLocaleString('es-ES')})</span>
               </button>
             );
           })}
@@ -233,6 +228,40 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
               </span>
             </div>
           </label>
+
+          <label className={`flex items-start space-x-2 p-2 rounded-lg cursor-pointer transition-colors border ${
+            draftFilters.costPriorityMode === 'under_500_all'
+              ? 'bg-slate-100 border-slate-300 text-slate-900'
+              : 'border-slate-200 hover:bg-slate-50 text-slate-700'
+          }`}>
+            <input
+              type="radio"
+              name="costPriorityMode"
+              checked={draftFilters.costPriorityMode === 'under_500_all'}
+              onChange={() => setDraftFilters({ ...draftFilters, costPriorityMode: 'under_500_all' })}
+              className="mt-0.5 text-slate-800 focus:ring-slate-800 w-3.5 h-3.5"
+            />
+            <div>
+              <span className="font-semibold text-slate-800 block leading-tight">
+                Sin prioridad de coste
+              </span>
+              <span className="text-[11px] text-slate-500 block leading-tight mt-0.5">
+                Ordena solo por la puntuación global (afinidad, cuartil, coste…) entre las que caben en el presupuesto.
+              </span>
+            </div>
+          </label>
+
+          <label className="flex items-start space-x-2 pt-1 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={draftFilters.includeUnknownCost}
+              onChange={e => setDraftFilters({ ...draftFilters, includeUnknownCost: e.target.checked })}
+              className="mt-0.5 rounded text-slate-800 focus:ring-slate-800 border-slate-300 w-4 h-4"
+            />
+            <span className="text-[11px] text-slate-700 leading-snug">
+              Incluir revistas con <strong>coste sin verificar</strong> (fichas automáticas de SCImago)
+            </span>
+          </label>
         </div>
       </div>
 
@@ -252,6 +281,18 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
           />
           <span className="font-medium text-slate-800">
             Formato libre confirmado (YPYW)
+          </span>
+        </label>
+
+        <label className="flex items-start space-x-2 text-xs text-slate-700 cursor-pointer hover:text-slate-900">
+          <input
+            type="checkbox"
+            checked={draftFilters.includeUnrelated}
+            onChange={e => setDraftFilters({ ...draftFilters, includeUnrelated: e.target.checked })}
+            className="mt-0.5 rounded text-slate-800 focus:ring-slate-800 border-slate-300 w-4 h-4"
+          />
+          <span className="font-medium text-slate-800 leading-snug">
+            Mostrar también revistas sin coincidencia temática
           </span>
         </label>
       </div>
@@ -313,6 +354,19 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
           </div>
           <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded font-medium">Gold OA</span>
         </label>
+
+        <label className="flex items-center justify-between text-xs text-slate-700 cursor-pointer">
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              checked={draftFilters.selectedPublicationModels.includes('subscription_unverified')}
+              onChange={() => togglePublicationModel('subscription_unverified')}
+              className="rounded text-slate-800 border-slate-300 w-3.5 h-3.5"
+            />
+            <span>Suscripción / híbrida (sin verificar)</span>
+          </div>
+          <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded font-medium">SCImago</span>
+        </label>
       </div>
 
       {/* 4. Filtro por Editorial */}
@@ -320,7 +374,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
         <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
           Editorial
         </label>
-        {allPublishers.map(pub => {
+        {topPublishers.map(([pub, count]) => {
           const isChecked = draftFilters.selectedPublishers.includes(pub);
           return (
             <label key={pub} className="flex items-center space-x-2 text-xs text-slate-700 cursor-pointer">
@@ -330,7 +384,8 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
                 onChange={() => togglePublisher(pub)}
                 className="rounded text-slate-800 border-slate-300 w-3.5 h-3.5"
               />
-              <span className="truncate">{pub}</span>
+              <span className="truncate flex-1">{pub}</span>
+              <span className="text-[10px] text-slate-400">{count.toLocaleString('es-ES')}</span>
             </label>
           );
         })}
@@ -373,7 +428,7 @@ export const FilterSidebar: React.FC<FilterSidebarProps> = ({
         </button>
 
         <div className="text-xs text-slate-500 text-center mt-2">
-          Mostrando <strong className="text-slate-900">{totalResultsCount}</strong> de {journals.length} revistas
+          Mostrando <strong className="text-slate-900">{totalResultsCount.toLocaleString('es-ES')}</strong> de {journals.length.toLocaleString('es-ES')} revistas
         </div>
       </div>
     </aside>

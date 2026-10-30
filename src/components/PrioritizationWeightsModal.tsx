@@ -1,4 +1,5 @@
 import React from 'react';
+import { useEscapeKey } from '../utils/useEscapeKey';
 import { ScoringWeights } from '../types/journal';
 import { DEFAULT_WEIGHTS } from '../utils/rankingScorer';
 import { X, Sliders, RotateCcw, Info, Check } from 'lucide-react';
@@ -14,6 +15,7 @@ export const PrioritizationWeightsModal: React.FC<PrioritizationWeightsModalProp
   onChangeWeights,
   onClose
 }) => {
+  useEscapeKey(onClose);
   const total =
     weights.thematicAffinity +
     weights.quartilePrestige +
@@ -115,7 +117,7 @@ export const PrioritizationWeightsModal: React.FC<PrioritizationWeightsModalProp
             <div>
               <div className="flex justify-between items-center mb-1 text-xs">
                 <span className="font-semibold text-slate-800">
-                  3. Ausencia de Cargos o Coste Final ≤ $500 USD
+                  3. Ausencia de Cargos o Coste Dentro del Presupuesto
                 </span>
                 <span className="font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">
                   {Math.round((weights.costAdvantage / total) * 100)}% ({weights.costAdvantage} pts)

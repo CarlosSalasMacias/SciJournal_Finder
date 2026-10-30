@@ -1,6 +1,14 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { useEscapeKey } from '../utils/useEscapeKey';
 import { Journal, ManuscriptQuery } from '../types/journal';
 import { calculateEffectiveCost } from '../utils/costCalculator';
+import { budgetLabel, formatFreeLabel } from '../utils/labels';
+
+const SCOPE_LABELS: Record<Journal['scopeType'], string> = {
+  general_multidisciplinary: 'Multidisciplinar',
+  broad_specialized: 'Especializada amplia',
+  highly_focused: 'Muy especializada',
+};
 import {
   X,
   ExternalLink,
@@ -30,9 +38,13 @@ export const JournalDetailModal: React.FC<JournalDetailModalProps> = ({
   onToggleCompare,
   isCompared
 }) => {
+  useEscapeKey(onClose);
+
   if (!journal) return null;
 
   const costResult = calculateEffectiveCost(journal, query);
+  const isScimago = journal.dataSource === 'scimago';
+  const costKnown = costResult.effectiveCostUSD !== null;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
@@ -71,7 +83,7 @@ export const JournalDetailModal: React.FC<JournalDetailModalProps> = ({
                 rel="noopener noreferrer"
                 className="text-indigo-300 hover:text-white underline inline-flex items-center"
               >
-                Web oficial <ExternalLink className="w-3 h-3 ml-0.5" />
+                {isScimago ? 'Ver en SCImago' : 'Web oficial'} <ExternalLink className="w-3 h-3 ml-0.5" />
               </a>
             </div>
           </div>
@@ -93,7 +105,7 @@ export const JournalDetailModal: React.FC<JournalDetailModalProps> = ({
           <section className="bg-slate-50 rounded-xl p-4 border border-slate-200/80">
             <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center">
               <Layers className="w-4 h-4 mr-1.5 text-indigo-600" />
-              Clasificación y Cuartiles Verificados
+              {isScimago ? 'Clasificación y Cuartiles (SCImago 2025)' : 'Clasificación y Cuartiles Verificados'}
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {journal.quartiles.map((q, idx) => (
@@ -148,41 +160,50 @@ export const JournalDetailModal: React.FC<JournalDetailModalProps> = ({
               Condiciones Económicas y Cálculo de Coste Final
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <span className="text-xs text-slate-500 block">APC de Lista Oficial</span>
-                <span className="text-base font-bold text-slate-900">
-                  {journal.listAPC.amount} {journal.listAPC.currency}
-                </span>
-                <span className="text-[11px] text-slate-500 block mt-0.5">
-                  Equivalente: ~${journal.listAPC.usdEquivalent} USD (Cambio {journal.listAPC.exchangeRateUsed} a {journal.listAPC.rateDate})
-                </span>
+            {isScimago && !journal.isDiamondOA ? (
+              <div className="mb-4 p-3 bg-amber-50 rounded-lg border border-amber-200 text-xs text-amber-900">
+                <strong className="block mb-0.5">Coste sin verificar</strong>
+                Esta ficha se generó automáticamente desde SCImago, que no publica el importe del APC.
+                Antes de enviar, compruebe las tarifas en la{' '}
+                <a href={journal.feePolicyUrl} target="_blank" rel="noopener noreferrer" className="underline font-semibold">
+                  política de costes
+                </a>.
               </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <span className="text-xs text-slate-500 block">APC de Lista Oficial</span>
+                  <span className="text-base font-bold text-slate-900">
+                    {journal.listAPC.amount} {journal.listAPC.currency}
+                  </span>
+                  {journal.listAPC.currency !== 'USD' && (
+                    <span className="text-[11px] text-slate-500 block mt-0.5">
+                      Equivalente: ~${journal.listAPC.usdEquivalent} USD (cambio {journal.listAPC.exchangeRateUsed} a {journal.listAPC.rateDate})
+                    </span>
+                  )}
+                </div>
 
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                <span className="text-xs text-slate-500 block">Cargos Adicionales Obligatorios</span>
-                <span className="text-base font-bold text-slate-900">
-                  ${journal.listAPC.mandatoryOtherFeesUSD} USD
-                </span>
-                <span className="text-[11px] text-slate-500 block mt-0.5">
-                  Páginas, figuras a color o tasa de envío
-                </span>
-              </div>
+                <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                  <span className="text-xs text-slate-500 block">Cargos Adicionales Obligatorios</span>
+                  <span className="text-base font-bold text-slate-900">
+                    ${journal.listAPC.mandatoryOtherFeesUSD} USD
+                  </span>
+                  <span className="text-[11px] text-slate-500 block mt-0.5">
+                    Páginas, figuras a color o tasa de envío
+                  </span>
+                </div>
 
-              <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
-                <span className="text-xs text-emerald-800 font-medium block">Coste Final Estimado Manuscrito</span>
-                <span className="text-lg font-black text-emerald-900">
-                  ${costResult.effectiveCostUSD} USD
-                </span>
-                <span className="text-[11px] text-emerald-700 font-semibold block mt-0.5">
-                  {costResult.budgetEligibility === 'under_500_confirmed'
-                    ? '✓ ≤ 500 USD confirmado'
-                    : costResult.budgetEligibility === 'under_500_conditioned'
-                    ? '⚠️ ≤ 500 USD condicionado a solicitud'
-                    : '> 500 USD'}
-                </span>
+                <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                  <span className="text-xs text-emerald-800 font-medium block">Coste Final Estimado Manuscrito</span>
+                  <span className="text-lg font-black text-emerald-900">
+                    {costKnown ? `$${costResult.effectiveCostUSD} USD` : 'Sin verificar'}
+                  </span>
+                  <span className="text-[11px] text-emerald-700 font-semibold block mt-0.5">
+                    {budgetLabel(costResult)} · presupuesto {query.maxBudgetUSD} USD
+                  </span>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Explicación de cálculo */}
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-xs space-y-2">
@@ -233,7 +254,7 @@ export const JournalDetailModal: React.FC<JournalDetailModalProps> = ({
                   </span>
                 ) : (
                   <span className="px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
-                    Requiere plantilla editorial obligatoria
+                    {formatFreeLabel(journal)}
                   </span>
                 )}
               </div>
@@ -243,7 +264,7 @@ export const JournalDetailModal: React.FC<JournalDetailModalProps> = ({
               <div className="text-xs text-slate-500 pt-2 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div>
                   <span className="block font-medium text-slate-700">Revisión estimada:</span>
-                  <span>{journal.averageReviewWeeks || '8-12'} semanas</span>
+                  <span>{journal.averageReviewWeeks ? `${journal.averageReviewWeeks} semanas` : 'No informada'}</span>
                 </div>
                 <div>
                   <span className="block font-medium text-slate-700">Tasa aceptación:</span>
@@ -251,13 +272,33 @@ export const JournalDetailModal: React.FC<JournalDetailModalProps> = ({
                 </div>
                 <div>
                   <span className="block font-medium text-slate-700">Idiomas:</span>
-                  <span>{journal.languages.join(', ')}</span>
+                  <span>{journal.languages.length > 0 ? journal.languages.join(', ') : 'Sin verificar'}</span>
                 </div>
                 <div>
                   <span className="block font-medium text-slate-700">Tipo de alcance:</span>
-                  <span className="capitalize">{journal.scopeType.replace('_', ' ')}</span>
+                  <span>{SCOPE_LABELS[journal.scopeType]}</span>
                 </div>
               </div>
+              {journal.sjrScore !== undefined && (
+                <div className="text-xs text-slate-500 pt-2 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div>
+                    <span className="block font-medium text-slate-700">SJR 2025:</span>
+                    <span>{journal.sjrScore.toFixed(3)}</span>
+                  </div>
+                  <div>
+                    <span className="block font-medium text-slate-700">Índice H:</span>
+                    <span>{journal.hIndex ?? '—'}</span>
+                  </div>
+                  <div>
+                    <span className="block font-medium text-slate-700">País:</span>
+                    <span>{journal.country || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="block font-medium text-slate-700">Áreas SCImago:</span>
+                    <span>{journal.scimagoAreas?.join(', ') || '—'}</span>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 
@@ -327,7 +368,7 @@ export const JournalDetailModal: React.FC<JournalDetailModalProps> = ({
               rel="noopener noreferrer"
               className="px-3 py-1.5 rounded-lg font-medium text-slate-700 bg-white border border-slate-300 hover:bg-slate-100 transition-colors inline-flex items-center"
             >
-              Directrices para Autores
+              {isScimago ? 'Buscar guía para autores' : 'Directrices para Autores'}
               <ExternalLink className="w-3 h-3 ml-1" />
             </a>
 
