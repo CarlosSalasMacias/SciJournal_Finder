@@ -11,7 +11,7 @@ on:
         type: choice
         options: [test, dev]
       model:
-        description: 'Modelo de Gemini (vacío = gemini-flash-latest)'
+        description: 'Modelo de Gemini (vacío = gemini-flash-lite-latest)'
         default: ''
         type: string
 

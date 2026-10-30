@@ -14,7 +14,7 @@ export interface AiSettings {
   model?: string;
 }
 
-export const DEFAULT_GEMINI_MODEL = 'gemini-flash-latest';
+export const DEFAULT_GEMINI_MODEL = 'gemini-flash-lite-latest';
 const MAX_TOPICS = 6;
 
 function buildPrompt(query: ManuscriptQuery, categories: string[]): string {
