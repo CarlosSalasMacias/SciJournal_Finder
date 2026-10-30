@@ -97,7 +97,8 @@ async function run(mode: 'lexical' | 'ai') {
     hit += h; pAff += a; pApp += b; n++;
     const line = `${q.id} tema@3=${h} P@20app=${b.toFixed(2)} | ${profile.topics.slice(0, 3).map(t => t.category).join('; ')}`;
     console.log(line.replace(' P@20app', ` P@20af=${a.toFixed(2)} P@20app`));
-    if (mode === 'ai') annotate('notice', `${line}${profile.interpretation ? ` | ${profile.interpretation}` : ''}`);
+    // GitHub muestra como máximo 10 avisos por paso: solo se anotan los casos dudosos.
+    if (mode === 'ai' && (h === 0 || b < 0.5)) annotate('warning', `${line}${profile.interpretation ? ` | ${profile.interpretation}` : ''}`);
     if (verbose) console.log('   ', app.slice(0, 5).map(r => r.journal.title).join(' | '));
   }
   const summary = `[${mode}] ${set} (${n} búsquedas${failed ? `, ${failed} con error de IA` : ''}): Tema@3 ${(hit / n * 100).toFixed(0)} %  P@20 afinidad ${(pAff / n * 100).toFixed(0)} %  P@20 app ${(pApp / n * 100).toFixed(0)} %`;
